@@ -61,8 +61,11 @@ class SoundEngine {
   }
 
   resume() {
-    if (this._ctx && this._ctx.state === 'suspended') {
-      return this._ctx.resume();
+    // Also ensures the AudioContext is created (required during a user gesture
+    // on browsers that need explicit unlocking, e.g. Safari/iOS).
+    const ctx = this.ctx;
+    if (ctx.state === 'suspended') {
+      return ctx.resume();
     }
     return Promise.resolve();
   }
@@ -699,9 +702,7 @@ class UI {
       this.playBtn.querySelector('.play-text').textContent = 'Start';
       this.playBtn.setAttribute('aria-pressed', 'false');
     } else {
-      await this.metro.sound.resume();
-      // Force AudioContext creation on user gesture
-      const _ = this.metro.sound.ctx; // eslint-disable-line no-unused-vars
+      // Ensure AudioContext is created and running within this user gesture.
       await this.metro.sound.resume();
       this.metro.start();
       this.playBtn.classList.add('playing');
