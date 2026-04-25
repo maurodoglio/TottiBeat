@@ -33,6 +33,8 @@ const SUBDIVISION_TYPES = [
   { id: 'sixteenth', label: 'Sixteenths', stepsPerBeat: 4 },
 ];
 
+const TIME_SIGNATURE_DENOMINATORS = [2, 4, 8, 16];
+
 const TEMPO_MARKS = [
   { min: 20,  max: 40,  name: 'Grave'       },
   { min: 40,  max: 60,  name: 'Largo'       },
@@ -245,6 +247,7 @@ class Metronome {
     this.uniformSound  = 'tick';
     this.uniformColor  = BEAT_COLORS[0];
     this.subdivision   = 'quarter';
+    this.noteValue     = 4;
 
     this.isPlaying     = false;
     this._currentBeat  = 0;
@@ -291,7 +294,8 @@ class Metronome {
   }
 
   _beatInterval() {
-    return 60 / this.bpm;
+    const denominator = TIME_SIGNATURE_DENOMINATORS.includes(this.noteValue) ? this.noteValue : 4;
+    return (60 / this.bpm) * (4 / denominator);
   }
 
   _subdivisionSteps() {
@@ -350,6 +354,7 @@ class Metronome {
     return {
       bpm:          this.bpm,
       beatsPerBar:  this.beatsPerBar,
+      noteValue:    this.noteValue,
       beatSettings: JSON.parse(JSON.stringify(this.beatSettings)),
       useUniform:   this.useUniform,
       uniformSound: this.uniformSound,
@@ -361,6 +366,8 @@ class Metronome {
   /** Restore from a state snapshot */
   loadState(state) {
     this.bpm          = state.bpm          ?? this.bpm;
+    const loadedNoteValue = Number.parseInt(state.noteValue, 10);
+    this.noteValue    = TIME_SIGNATURE_DENOMINATORS.includes(loadedNoteValue) ? loadedNoteValue : 4;
     this.useUniform   = state.useUniform   ?? this.useUniform;
     this.uniformSound = state.uniformSound ?? this.uniformSound;
     this.uniformColor = state.uniformColor ?? this.uniformColor;
@@ -439,6 +446,7 @@ class UI {
 
     this._bindElements();
     this._buildBeatsPerBar();
+    this._buildTimeSignatureDenominators();
     this._buildSubdivisionControls();
     this._buildBeatCircles();
     this._buildUniformPanel();
@@ -469,7 +477,9 @@ class UI {
     this.modeButtons    = [...document.querySelectorAll('.mode-btn')];
     this.modeSections   = [...document.querySelectorAll('[data-mode-section]')];
     this.tempoName      = this.$('tempo-name');
+    this.timeSignaturePreview = this.$('time-signature-preview');
     this.bpbGrid        = this.$('beats-per-bar-grid');
+    this.timeSignatureDenominatorGrid = this.$('time-signature-denominator-grid');
     this.subdivisionGrid = this.$('subdivision-grid');
     this.beatCircles    = this.$('beat-circles');
     this.playBtn        = this.$('play-btn');
@@ -509,10 +519,27 @@ class UI {
       btn.className = 'beats-btn' + (i === this.metro.beatsPerBar ? ' active' : '');
       btn.dataset.beats = i;
       btn.textContent = i;
-      btn.setAttribute('aria-label', `${i} beats per bar`);
+      btn.setAttribute('aria-pressed', i === this.metro.beatsPerBar ? 'true' : 'false');
+      btn.setAttribute('aria-label', `Select ${i} as the top number of the time signature`);
       btn.addEventListener('click', () => this._onBeatsPerBar(i));
       this.bpbGrid.appendChild(btn);
     }
+  }
+
+  _buildTimeSignatureDenominators() {
+    this.timeSignatureDenominatorGrid.innerHTML = '';
+    TIME_SIGNATURE_DENOMINATORS.forEach((denominator) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'beats-btn denominator-btn' + (denominator === this.metro.noteValue ? ' active' : '');
+      button.dataset.denominator = denominator;
+      button.textContent = denominator;
+      button.setAttribute('aria-pressed', denominator === this.metro.noteValue ? 'true' : 'false');
+      button.setAttribute('aria-label', `Select ${denominator} as the bottom number of the time signature`);
+      button.addEventListener('click', () => this._setTimeSignatureDenominator(denominator));
+      this.timeSignatureDenominatorGrid.appendChild(button);
+    });
+    this._syncTimeSignaturePreview();
   }
 
   _buildSubdivisionControls() {
@@ -739,6 +766,7 @@ class UI {
       const name = this.presetNameInput.value.trim() || `Preset ${this._modalState.index + 1}`;
       this.store.save(this._modalState.index, name, {
         ...this.metro.getState(),
+        noteValue: this.metro.noteValue,
         appMode: this._appMode,
         practiceMode: {
           enabled: this._practice.enabled,
@@ -797,6 +825,11 @@ class UI {
     this.tapBtn.setAttribute('aria-label', label);
   }
 
+  _syncTimeSignaturePreview() {
+    if (!this.timeSignaturePreview) return;
+    this.timeSignaturePreview.textContent = `${this.metro.beatsPerBar}/${this.metro.noteValue}`;
+  }
+
   _defaultAppMode() {
     const hasSavedPresets = this.store.presets.some((preset) => preset && typeof preset === 'object');
     return hasSavedPresets ? 'expert' : 'easy';
@@ -832,6 +865,7 @@ class UI {
       }
       this._syncUniformToggle();
       this._buildBeatCircles();
+      this._syncTimeSignaturePreview();
     }
     if (this.appSubtitle) {
       this.appSubtitle.textContent = config.subtitle;
@@ -980,7 +1014,8 @@ class UI {
       metaEl.className = 'preset-meta';
       if (preset) {
         const d = new Date(preset.savedAt);
-        metaEl.textContent = `${preset.state.bpm} BPM · ${preset.state.beatsPerBar}/4 · ${d.toLocaleDateString()}`;
+        const noteValue = preset.state.noteValue ?? 4;
+        metaEl.textContent = `${preset.state.bpm} BPM · ${preset.state.beatsPerBar}/${noteValue} · ${d.toLocaleDateString()}`;
       }
 
       const actions = document.createElement('div');
@@ -1259,13 +1294,27 @@ class UI {
 
     // Update BPB buttons
     this.bpbGrid.querySelectorAll('.beats-btn').forEach((btn) => {
-      btn.classList.toggle('active', parseInt(btn.dataset.beats, 10) === n);
+      const isActive = parseInt(btn.dataset.beats, 10) === n;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
     });
+    this._syncTimeSignaturePreview();
 
     this._buildBeatCircles();
     this._buildPerBeatPanel();
 
     if (wasPlaying) this.metro.start();
+  }
+
+  _setTimeSignatureDenominator(denominator) {
+    if (!TIME_SIGNATURE_DENOMINATORS.includes(denominator)) return;
+    this.metro.noteValue = denominator;
+    this.timeSignatureDenominatorGrid.querySelectorAll('.denominator-btn').forEach((button) => {
+      const isActive = parseInt(button.dataset.denominator, 10) === denominator;
+      button.classList.toggle('active', isActive);
+      button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+    this._syncTimeSignaturePreview();
   }
 
   _setSubdivision(id) {
@@ -1373,6 +1422,7 @@ class UI {
     this._syncBpmDisplay();
     this._buildSubdivisionControls();
     this._buildBeatsPerBar();
+    this._buildTimeSignatureDenominators();
     this._buildBeatCircles();
     this._buildUniformPanel();
     this._buildPerBeatPanel();
