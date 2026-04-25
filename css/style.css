@@ -212,6 +212,7 @@ body {
 #bpm-input:focus-visible,
 .icon-btn:focus-visible,
 .beats-btn:focus-visible,
+.subdivision-btn:focus-visible,
 .play-btn:focus-visible,
 .tap-btn:focus-visible,
 .sound-btn:focus-visible,
@@ -287,6 +288,35 @@ body {
   background: rgba(108,99,255,0.15);
 }
 .tap-btn:active { transform: scale(0.97); }
+
+.subdivision-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 0.6rem;
+}
+
+.subdivision-btn {
+  padding: 0.65rem 0.8rem;
+  border-radius: 10px;
+  border: 2px solid var(--border);
+  background: var(--surface2);
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition), color var(--transition);
+}
+
+.subdivision-btn:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.subdivision-btn.active {
+  background: rgba(108,99,255,0.18);
+  border-color: var(--accent);
+  color: var(--text);
+}
 
 /* ─── Beat Settings ─────────────────────────────────────── */
 .settings-header {
