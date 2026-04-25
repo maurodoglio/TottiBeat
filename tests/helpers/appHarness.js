@@ -123,6 +123,12 @@ function createApp(options = {}) {
   const { window } = dom;
   const rafCallbacks = [];
 
+  if (options.storage) {
+    Object.entries(options.storage).forEach(([key, value]) => {
+      window.localStorage.setItem(key, value);
+    });
+  }
+
   window.AudioContext = FakeAudioContext;
   window.webkitAudioContext = FakeAudioContext;
   window.requestAnimationFrame = (callback) => {

@@ -368,13 +368,50 @@ describe('TottiBeat UI regressions', () => {
     expect(document.querySelector('.subdivision-btn.active')?.dataset.subdivision).toBe('quarter');
   });
 
-  it('defaults to easy mode and hides expert-only controls', () => {
+  it('defaults to easy mode and hides expert-only controls when there are no saved presets', () => {
     const { document } = createApp();
 
     expect(document.querySelector('.mode-btn.active')?.dataset.mode).toBe('easy');
     expect(document.querySelector('[data-mode-section="expert"]')?.hidden).toBe(true);
     expect(document.querySelector('[data-mode-section="always"]')?.hidden).toBe(false);
     expect(document.getElementById('app-subtitle').textContent).toContain('Simple metronome');
+  });
+
+  it('surfaces the expert controls on initial load when legacy saved presets already exist', () => {
+    const seededPresets = JSON.stringify([
+      {
+        name: 'Saved Groove',
+        savedAt: 1,
+        state: {
+          bpm: 110,
+          beatsPerBar: 4,
+          beatSettings: [
+            { sound: 'accent', color: '#6c63ff' },
+            { sound: 'tick', color: '#ff6584' },
+            { sound: 'tick', color: '#38d9a9' },
+            { sound: 'tick', color: '#ffd43b' },
+          ],
+          useUniform: true,
+          uniformSound: 'tick',
+          uniformColor: '#6c63ff',
+          subdivision: 'quarter',
+        },
+      },
+      null,
+      null,
+      null,
+      null,
+    ]);
+
+    const { document } = createApp({
+      storage: {
+        tottibeat_presets: seededPresets,
+      },
+    });
+
+    expect(document.querySelector('.mode-btn.active')?.dataset.mode).toBe('expert');
+    expect(document.querySelector('[data-mode-section="expert"]')?.hidden).toBe(false);
+    expect(document.querySelector('.load-btn')).not.toBeNull();
   });
 
   it('shows expert controls when expert mode is selected', () => {

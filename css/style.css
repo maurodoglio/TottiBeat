@@ -212,6 +212,7 @@ body {
 #bpm-input:focus-visible,
 .icon-btn:focus-visible,
 .beats-btn:focus-visible,
+.mode-btn:focus-visible,
 .subdivision-btn:focus-visible,
 .practice-field input:focus-visible,
 .play-btn:focus-visible,

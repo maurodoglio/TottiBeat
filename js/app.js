@@ -430,7 +430,7 @@ class UI {
     this._tapTimes        = [];
     this._modalState      = null;
     this._modalTrigger    = null;
-    this._appMode         = 'easy';
+    this._appMode         = this._defaultAppMode();
     this._practice = {
       ...DEFAULT_PRACTICE_SETTINGS,
       completedBars: 0,
@@ -795,6 +795,11 @@ class UI {
     const label = this._tapTimes.length >= 2 ? `Tap Tempo · ${this.metro.bpm} BPM` : 'Tap Tempo';
     this.tapBtn.textContent = label;
     this.tapBtn.setAttribute('aria-label', label);
+  }
+
+  _defaultAppMode() {
+    const hasSavedPresets = this.store.presets.some((preset) => preset && typeof preset === 'object');
+    return hasSavedPresets ? 'expert' : 'easy';
   }
 
   _syncMode() {
