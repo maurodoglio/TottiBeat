@@ -43,6 +43,8 @@ const MAX_PRESETS  = 5;
 const STORAGE_KEY  = 'tottibeat_presets';
 const LOOKAHEAD_MS = 25;          // scheduler interval
 const SCHEDULE_AHEAD = 0.12;      // seconds to look ahead
+const TAP_TEMPO_RESET_MS = 2000;
+const TAP_TEMPO_MAX_INTERVALS = 6;
 
 /* ════════════════════════════════════════════════════════════
    SoundEngine – Web Audio synthesis
@@ -381,6 +383,10 @@ class UI {
 
     this._activeBeatIndex = -1;
     this._flashTimer      = null;
+    this._popoverTrigger  = null;
+    this._tapTimes        = [];
+    this._modalState      = null;
+    this._modalTrigger    = null;
 
     this._bindElements();
     this._buildBeatsPerBar();
@@ -391,6 +397,7 @@ class UI {
     this._attachEvents();
     this._syncBpmDisplay();
     this._syncUniformToggle();
+    this._syncTapTempoButton();
 
     // Visual beat callback
     this.metro.onBeat = (beat) => this._flashBeat(beat);
@@ -407,6 +414,7 @@ class UI {
     this.bpbGrid        = this.$('beats-per-bar-grid');
     this.beatCircles    = this.$('beat-circles');
     this.playBtn        = this.$('play-btn');
+    this.tapBtn         = this.$('tap-btn');
     this.uniformToggle  = this.$('uniform-toggle');
     this.uniformPanel   = this.$('uniform-panel');
     this.perBeatPanel   = this.$('per-beat-panel');
@@ -418,6 +426,15 @@ class UI {
     this.popoverSound   = this.$('popover-sound-picker');
     this.popoverColor   = this.$('popover-color-picker');
     this.popoverClose   = this.$('popover-close');
+    this.presetModal    = this.$('preset-modal');
+    this.presetModalBackdrop = this.$('preset-modal-backdrop');
+    this.presetModalTitle = this.$('preset-modal-title');
+    this.presetModalDescription = this.$('preset-modal-description');
+    this.presetNameLabel = this.$('preset-name-label');
+    this.presetNameInput = this.$('preset-name-input');
+    this.presetModalCancel = this.$('preset-modal-cancel');
+    this.presetModalConfirm = this.$('preset-modal-confirm');
+    this.presetModalClose = this.$('preset-modal-close');
   }
 
   /* ── Builders ──────────────────────────────────────────── */
@@ -438,10 +455,14 @@ class UI {
     this.beatCircles.innerHTML = '';
     const n = this.metro.beatsPerBar;
     for (let i = 0; i < n; i++) {
-      const c = document.createElement('div');
+      const c = document.createElement('button');
+      c.type = 'button';
       c.className = 'beat-circle' + (i === 0 ? ' first-beat' : '');
       c.dataset.beat = i;
       c.textContent = i + 1;
+      c.setAttribute('aria-label', `Beat ${i + 1}${this.metro.useUniform ? '' : ' configuration'}`);
+      c.setAttribute('aria-disabled', this.metro.useUniform ? 'true' : 'false');
+      c.tabIndex = this.metro.useUniform ? -1 : 0;
       const color = this.metro.useUniform
         ? this.metro.uniformColor
         : this.metro.beatSettings[i].color;
@@ -472,10 +493,13 @@ class UI {
     // Color swatches
     this.$('uniform-color-picker').innerHTML = '';
     BEAT_COLORS.forEach((color) => {
-      const sw = document.createElement('div');
+      const sw = document.createElement('button');
+      sw.type = 'button';
       sw.className = 'color-swatch' + (color === this.metro.uniformColor ? ' active' : '');
       sw.style.background = color;
       sw.title = color;
+      sw.setAttribute('aria-label', `Select beat color ${color}`);
+      sw.setAttribute('aria-pressed', color === this.metro.uniformColor ? 'true' : 'false');
       sw.addEventListener('click', () => {
         this.metro.uniformColor = color;
         this._buildUniformPanel();
@@ -519,10 +543,13 @@ class UI {
       const colorPicker = document.createElement('div');
       colorPicker.className = 'color-picker';
       BEAT_COLORS.forEach((color) => {
-        const sw = document.createElement('div');
+        const sw = document.createElement('button');
+        sw.type = 'button';
         sw.className = 'color-swatch' + (color === cfg.color ? ' active' : '');
         sw.style.background = color;
         sw.title = color;
+        sw.setAttribute('aria-label', `Select color ${color} for beat ${i + 1}`);
+        sw.setAttribute('aria-pressed', color === cfg.color ? 'true' : 'false');
         sw.addEventListener('click', () => {
           this.metro.beatSettings[i].color = color;
           this._buildPerBeatPanel();
@@ -549,6 +576,138 @@ class UI {
 
       this.perBeatList.appendChild(row);
     }
+  }
+
+  _focusPopoverControl(selector, predicate) {
+    const controls = [...this.popover.querySelectorAll(selector)];
+    const target = controls.find(predicate) || controls[0];
+    if (target && typeof target.focus === 'function') {
+      target.focus();
+    }
+  }
+
+  _popoverFocusableElements() {
+    return [...this.popover.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+      .filter((element) => !element.classList.contains('hidden'));
+  }
+
+  _modalFocusableElements() {
+    return [...this.presetModal.querySelectorAll('button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+      .filter((element) => !element.classList.contains('hidden'));
+  }
+
+  _openPresetModal(config) {
+    this._modalState = config;
+    this._modalTrigger = document.activeElement;
+    this._modalTriggerMeta = {
+      index: config.index,
+      action: config.mode === 'delete' ? 'del' : 'save',
+    };
+
+    this.presetModalTitle.textContent = config.title;
+    this.presetModalDescription.textContent = config.description;
+    this.presetModalConfirm.textContent = config.confirmLabel;
+    this.presetModalConfirm.classList.toggle('del-btn', config.variant === 'danger');
+    this.presetModalConfirm.classList.toggle('save-btn', config.variant !== 'danger');
+
+    const requiresName = config.mode === 'save';
+    this.presetNameLabel.classList.toggle('hidden', !requiresName);
+    this.presetNameInput.classList.toggle('hidden', !requiresName);
+    this.presetNameInput.value = config.initialValue || '';
+
+    this.presetModal.classList.remove('hidden');
+    this.presetModalBackdrop.classList.remove('hidden');
+
+    if (requiresName) {
+      this.presetNameInput.focus();
+      this.presetNameInput.select();
+    } else {
+      this.presetModalConfirm.focus();
+    }
+  }
+
+  _closePresetModal({ restoreFocus = true } = {}) {
+    this.presetModal.classList.add('hidden');
+    this.presetModalBackdrop.classList.add('hidden');
+    this.presetModalConfirm.classList.remove('del-btn');
+    this.presetModalConfirm.classList.add('save-btn');
+    this._modalState = null;
+
+    if (restoreFocus) {
+      const slot = this._modalTriggerMeta
+        ? this.presetsGrid.children[this._modalTriggerMeta.index]
+        : null;
+      const preferredTrigger = this._modalTriggerMeta?.action
+        ? slot?.querySelector(`.${this._modalTriggerMeta.action}-btn:not(:disabled)`)
+        : null;
+      const liveTrigger = preferredTrigger
+        || slot?.querySelector('.save-btn:not(:disabled)')
+        || slot?.querySelector('.load-btn:not(:disabled)')
+        || slot?.querySelector('.del-btn:not(:disabled)')
+        || null;
+      const fallbackTrigger = liveTrigger || this._modalTrigger;
+      if (fallbackTrigger && typeof fallbackTrigger.focus === 'function') {
+        fallbackTrigger.focus();
+      }
+    }
+
+    this._modalTriggerMeta = null;
+  }
+
+  _submitPresetModal() {
+    if (!this._modalState) return;
+
+    if (this._modalState.mode === 'save') {
+      const name = this.presetNameInput.value.trim() || `Preset ${this._modalState.index + 1}`;
+      this.store.save(this._modalState.index, name, this.metro.getState());
+      this._buildPresets();
+      this._closePresetModal();
+      return;
+    }
+
+    if (this._modalState.mode === 'delete') {
+      this.store.delete(this._modalState.index);
+      this._buildPresets();
+      this._closePresetModal();
+    }
+  }
+
+  _registerTapTempoTap() {
+    const now = Date.now();
+    const lastTap = this._tapTimes[this._tapTimes.length - 1];
+
+    if (lastTap && now - lastTap > TAP_TEMPO_RESET_MS) {
+      this._tapTimes = [];
+    }
+
+    this._tapTimes.push(now);
+    if (this._tapTimes.length > TAP_TEMPO_MAX_INTERVALS + 1) {
+      this._tapTimes.shift();
+    }
+
+    if (this._tapTimes.length >= 2) {
+      const intervals = [];
+      for (let i = 1; i < this._tapTimes.length; i++) {
+        intervals.push(this._tapTimes[i] - this._tapTimes[i - 1]);
+      }
+      const averageInterval = intervals.reduce((sum, interval) => sum + interval, 0) / intervals.length;
+      const bpm = Math.round(60000 / averageInterval);
+      this._setBpm(bpm, { preserveTapHistory: true });
+    }
+
+    this._syncTapTempoButton();
+  }
+
+  _resetTapTempo() {
+    this._tapTimes = [];
+    this._syncTapTempoButton();
+  }
+
+  _syncTapTempoButton() {
+    if (!this.tapBtn) return;
+    const label = this._tapTimes.length >= 2 ? `Tap Tempo · ${this.metro.bpm} BPM` : 'Tap Tempo';
+    this.tapBtn.textContent = label;
+    this.tapBtn.setAttribute('aria-label', label);
   }
 
   _buildPresets() {
@@ -602,7 +761,13 @@ class UI {
 
   /* ── Popover (per-beat inline from beat circles) ────────── */
   _openPopover(beatIndex) {
+    const isRefresh = !this.popover.classList.contains('hidden') && this._popoverBeat === beatIndex;
+
     this._popoverBeat = beatIndex;
+    if (!isRefresh) {
+      const activeBeat = document.activeElement?.closest?.('.beat-circle');
+      this._popoverTrigger = activeBeat || document.activeElement;
+    }
     const cfg = this.metro.beatSettings[beatIndex];
     this.popoverBeatNum.textContent = beatIndex + 1;
 
@@ -616,6 +781,7 @@ class UI {
         this.metro.beatSettings[beatIndex].sound = id;
         this._openPopover(beatIndex); // refresh
         this._buildPerBeatPanel();
+        this._focusPopoverControl('.sound-btn', (control) => control.textContent === label);
       });
       this.popoverSound.appendChild(btn);
     });
@@ -623,25 +789,39 @@ class UI {
     // Color
     this.popoverColor.innerHTML = '';
     BEAT_COLORS.forEach((color) => {
-      const sw = document.createElement('div');
+      const sw = document.createElement('button');
+      sw.type = 'button';
       sw.className = 'color-swatch' + (color === cfg.color ? ' active' : '');
       sw.style.background = color;
+      sw.setAttribute('aria-label', `Select color ${color} for beat ${beatIndex + 1}`);
+      sw.setAttribute('aria-pressed', color === cfg.color ? 'true' : 'false');
       sw.addEventListener('click', () => {
         this.metro.beatSettings[beatIndex].color = color;
         this._openPopover(beatIndex); // refresh
         this._buildBeatCircles();
         this._buildPerBeatPanel();
+        this._focusPopoverControl('.color-swatch', (control) => control.getAttribute('aria-label') === sw.getAttribute('aria-label'));
       });
       this.popoverColor.appendChild(sw);
     });
 
     this.popover.classList.remove('hidden');
     this.popoverBdrop.classList.remove('hidden');
+    const firstFocusable = this.popover.querySelector('button');
+    if (firstFocusable) firstFocusable.focus();
   }
 
   _closePopover() {
     this.popover.classList.add('hidden');
     this.popoverBdrop.classList.add('hidden');
+    if (this._popoverTrigger) {
+      const liveTrigger = this._popoverTrigger.dataset?.beat
+        ? this.beatCircles.querySelector(`.beat-circle[data-beat="${this._popoverTrigger.dataset.beat}"]`)
+        : this._popoverTrigger;
+      if (liveTrigger && typeof liveTrigger.focus === 'function') {
+        liveTrigger.focus();
+      }
+    }
   }
 
   /* ── Event wiring ──────────────────────────────────────── */
@@ -671,10 +851,13 @@ class UI {
 
     // Play/Stop
     this.playBtn.addEventListener('click', () => this._togglePlay());
+    this.tapBtn.addEventListener('click', () => this._registerTapTempoTap());
 
     // Space bar = play/stop
     document.addEventListener('keydown', (e) => {
-      if (e.code === 'Space' && e.target.tagName !== 'INPUT') {
+      const targetTag = e.target?.tagName;
+      const isInteractive = ['INPUT', 'BUTTON', 'SELECT', 'TEXTAREA'].includes(targetTag);
+      if (e.code === 'Space' && !isInteractive) {
         e.preventDefault();
         this._togglePlay();
       }
@@ -682,14 +865,72 @@ class UI {
 
     // Uniform toggle
     this.uniformToggle.addEventListener('change', () => {
+      if (this.uniformToggle.checked && !this.popover.classList.contains('hidden')) {
+        this._closePopover();
+      }
       this.metro.useUniform = this.uniformToggle.checked;
       this._syncUniformToggle();
       this._buildBeatCircles();
+      if (this.uniformToggle.checked) {
+        this.uniformToggle.focus();
+      }
     });
 
     // Popover close
     this.popoverClose.addEventListener('click', () => this._closePopover());
     this.popoverBdrop.addEventListener('click', () => this._closePopover());
+    this.presetModalCancel.addEventListener('click', () => this._closePresetModal());
+    this.presetModalClose.addEventListener('click', () => this._closePresetModal());
+    this.presetModalBackdrop.addEventListener('click', () => this._closePresetModal());
+    this.presetModalConfirm.addEventListener('click', () => this._submitPresetModal());
+    this.presetNameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        this._submitPresetModal();
+      }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !this.popover.classList.contains('hidden')) {
+        e.preventDefault();
+        this._closePopover();
+      }
+      if (e.key === 'Escape' && !this.presetModal.classList.contains('hidden')) {
+        e.preventDefault();
+        this._closePresetModal();
+      }
+      if (e.key === 'Tab' && !this.popover.classList.contains('hidden')) {
+        const focusable = this._popoverFocusableElements();
+        if (!focusable.length) return;
+
+        const currentIndex = focusable.indexOf(document.activeElement);
+        const fallbackIndex = e.shiftKey ? 0 : focusable.length - 1;
+        const resolvedIndex = currentIndex === -1 ? fallbackIndex : currentIndex;
+
+        if (!e.shiftKey && resolvedIndex === focusable.length - 1) {
+          e.preventDefault();
+          focusable[0].focus();
+        } else if (e.shiftKey && resolvedIndex === 0) {
+          e.preventDefault();
+          focusable[focusable.length - 1].focus();
+        }
+      }
+      if (e.key === 'Tab' && !this.presetModal.classList.contains('hidden')) {
+        const focusable = this._modalFocusableElements();
+        if (!focusable.length) return;
+
+        const currentIndex = focusable.indexOf(document.activeElement);
+        const fallbackIndex = e.shiftKey ? 0 : focusable.length - 1;
+        const resolvedIndex = currentIndex === -1 ? fallbackIndex : currentIndex;
+
+        if (!e.shiftKey && resolvedIndex === focusable.length - 1) {
+          e.preventDefault();
+          focusable[0].focus();
+        } else if (e.shiftKey && resolvedIndex === 0) {
+          e.preventDefault();
+          focusable[focusable.length - 1].focus();
+        }
+      }
+    });
   }
 
   /* ── Actions ───────────────────────────────────────────── */
@@ -715,6 +956,7 @@ class UI {
   _onBeatsPerBar(n) {
     const wasPlaying = this.metro.isPlaying;
     if (wasPlaying) this.metro.stop();
+    if (!this.popover.classList.contains('hidden')) this._closePopover();
 
     this.metro.setBeatsPerBar(n);
 
@@ -729,17 +971,23 @@ class UI {
     if (wasPlaying) this.metro.start();
   }
 
-  _setBpm(val) {
+  _setBpm(val, { preserveTapHistory = false } = {}) {
     val = Math.min(300, Math.max(20, val || 20));
     this.metro.bpm       = val;
     this.bpmInput.value  = val;
     this.bpmSlider.value = val;
     this.tempoName.textContent = this._tempoName(val);
+    if (!preserveTapHistory) {
+      this._tapTimes = [];
+    }
+    this._syncTapTempoButton();
   }
 
   _tempoName(bpm) {
-    for (const { min, max, name } of TEMPO_MARKS) {
-      if (bpm >= min && bpm < max) return name;
+    for (let i = 0; i < TEMPO_MARKS.length; i++) {
+      const { min, max, name } = TEMPO_MARKS[i];
+      const isLastRange = i === TEMPO_MARKS.length - 1;
+      if (bpm >= min && (bpm < max || (isLastRange && bpm <= max))) return name;
     }
     return '';
   }
@@ -787,10 +1035,15 @@ class UI {
 
   /* ── Preset management ─────────────────────────────────── */
   _savePreset(index) {
-    const name = prompt(`Name for preset ${index + 1}:`, `Preset ${index + 1}`);
-    if (name === null) return; // cancelled
-    this.store.save(index, name.trim() || `Preset ${index + 1}`, this.metro.getState());
-    this._buildPresets();
+    this._openPresetModal({
+      mode: 'save',
+      index,
+      title: `Save preset ${index + 1}`,
+      description: 'Give this preset a name so you can load it later.',
+      confirmLabel: 'Save preset',
+      initialValue: this.store.load(index)?.name || `Preset ${index + 1}`,
+      variant: 'primary',
+    });
   }
 
   _loadPreset(index) {
@@ -799,6 +1052,7 @@ class UI {
 
     const wasPlaying = this.metro.isPlaying;
     if (wasPlaying) this.metro.stop();
+    if (!this.popover.classList.contains('hidden')) this._closePopover();
 
     this.metro.loadState(p.state);
 
@@ -813,9 +1067,15 @@ class UI {
   }
 
   _deletePreset(index) {
-    if (!confirm(`Delete preset ${index + 1}?`)) return;
-    this.store.delete(index);
-    this._buildPresets();
+    if (!this.store.load(index)) return;
+    this._openPresetModal({
+      mode: 'delete',
+      index,
+      title: `Delete preset ${index + 1}`,
+      description: 'This preset will be removed permanently from local storage.',
+      confirmLabel: 'Delete preset',
+      variant: 'danger',
+    });
   }
 }
 

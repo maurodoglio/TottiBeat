@@ -118,7 +118,6 @@ body {
   color: var(--text);
   background: transparent;
   border: none;
-  outline: none;
   line-height: 1;
   -moz-appearance: textfield;
 }
@@ -190,6 +189,7 @@ body {
 }
 
 .beat-circle {
+  appearance: none;
   width: 60px;
   height: 60px;
   border-radius: 50%;
@@ -209,6 +209,21 @@ body {
 
 .beat-circle:hover { border-color: var(--accent); }
 
+#bpm-input:focus-visible,
+.icon-btn:focus-visible,
+.beats-btn:focus-visible,
+.play-btn:focus-visible,
+.tap-btn:focus-visible,
+.sound-btn:focus-visible,
+.preset-btn:focus-visible,
+.close-btn:focus-visible,
+.color-swatch:focus-visible,
+.beat-circle:focus-visible,
+.toggle-label input:focus-visible + .toggle-track {
+  outline: 3px solid rgba(116, 192, 252, 0.95);
+  outline-offset: 3px;
+}
+
 .beat-circle.active {
   transform: scale(1.18);
   box-shadow: 0 0 20px var(--beat-color, var(--accent));
@@ -223,6 +238,9 @@ body {
 .transport-section {
   display: flex;
   justify-content: center;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
   margin-bottom: 1rem;
 }
 
@@ -252,6 +270,24 @@ body {
 }
 .play-btn.playing:hover { box-shadow: 0 6px 28px rgba(255,101,132,0.6); }
 
+.tap-btn {
+  min-width: 140px;
+  padding: 0.85rem 1.25rem;
+  border-radius: 999px;
+  border: 2px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.1s, border-color var(--transition), background var(--transition);
+}
+.tap-btn:hover {
+  border-color: var(--accent);
+  background: rgba(108,99,255,0.15);
+}
+.tap-btn:active { transform: scale(0.97); }
+
 /* ─── Beat Settings ─────────────────────────────────────── */
 .settings-header {
   display: flex;
@@ -273,7 +309,13 @@ body {
   font-size: 0.85rem;
   color: var(--text-dim);
 }
-.toggle-label input { display: none; }
+.toggle-label input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
 .toggle-track {
   width: 40px;
   height: 22px;
@@ -444,6 +486,43 @@ body {
 .preset-btn.load-btn:hover  { background: #2e3d6a; color: #7fb0ff; }
 .preset-btn.del-btn:hover   { background: #6a2e2e; border-color: var(--accent2); color: var(--accent2); }
 .preset-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.app-modal {
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 220;
+  width: min(420px, calc(100vw - 2rem));
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  box-shadow: var(--shadow);
+}
+
+.modal-description {
+  margin: 0 0 1rem;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.modal-input {
+  width: 100%;
+  padding: 0.75rem 0.9rem;
+  margin-bottom: 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
 
 /* ─── Popover ────────────────────────────────────────────── */
 .beat-popover {
