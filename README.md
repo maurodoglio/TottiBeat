@@ -17,10 +17,27 @@ A professional, browser-based metronome with rich visual and audio feedback.
 
 Open `index.html` directly in any modern browser – no build step or server required.
 
+## Native mobile app
+
+A new native mobile workspace now lives under `mobile/`.
+
+- root `npm test` validates the existing web regression suite plus Batch A native-foundation checks
+- mobile work is developed and validated from inside `mobile/`
+- typical mobile commands:
+
+```bash
+cd mobile
+npm install
+npm run lint
+npm test
+npm start
+```
+
 ## File structure
 
 ```
 index.html      – App shell
 css/style.css   – Dark-theme styles
 js/app.js       – SoundEngine, Metronome, SettingsStore, UI
+mobile/         – Native React Native / Expo workspace
 ```
