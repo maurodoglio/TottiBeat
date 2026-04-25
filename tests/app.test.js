@@ -360,12 +360,24 @@ describe('TottiBeat UI regressions', () => {
     expect(document.activeElement?.classList.contains('beat-circle')).toBe(true);
   });
 
-  it('renders subdivision controls with quarter notes selected by default', () => {
+  it('keeps beat subdivision controls expert-only and defaults them to quarter notes', () => {
     const { document } = createApp();
+    const subdivisionSection = document.querySelector('.subdivision-section');
     const subdivisionButtons = [...document.querySelectorAll('#subdivision-grid .subdivision-btn')];
 
+    expect(subdivisionSection?.hidden).toBe(true);
+    expect(subdivisionSection?.querySelector('.section-label')?.textContent).toContain('Beat subdivision');
+    expect(subdivisionSection?.querySelector('.section-hint')?.textContent).toContain('Extra pulse clicks between each beat');
     expect(subdivisionButtons).toHaveLength(4);
     expect(document.querySelector('.subdivision-btn.active')?.dataset.subdivision).toBe('quarter');
+  });
+
+  it('labels the beat display as the current bar pulse', () => {
+    const { document } = createApp();
+    const beatDisplaySection = document.querySelector('.beat-display-section');
+
+    expect(beatDisplaySection?.querySelector('.section-label')?.textContent).toContain('Current bar');
+    expect(beatDisplaySection?.querySelector('.section-hint')?.textContent).toContain('The highlighted circle shows the live pulse');
   });
 
   it('renders time signature controls as a fraction with 4/4 selected by default', () => {
@@ -407,6 +419,19 @@ describe('TottiBeat UI regressions', () => {
 
     expect(quarterInterval).toBeCloseTo(0.5, 5);
     expect(eighthInterval).toBeCloseTo(0.25, 5);
+  });
+
+  it('applies an ios-style mobile shell treatment to the main app layout', () => {
+    const { document, window } = createApp();
+    const app = document.querySelector('.app');
+    const modeCard = document.querySelector('.mode-section');
+    const playButton = document.getElementById('play-btn');
+    const computedModeCard = window.getComputedStyle(modeCard);
+
+    expect(app?.classList.contains('app')).toBe(true);
+    expect(computedModeCard.backdropFilter).not.toBe('none');
+    expect(modeCard?.classList.contains('card')).toBe(true);
+    expect(playButton?.classList.contains('play-btn')).toBe(true);
   });
 
   it('defaults to easy mode and hides expert-only controls when there are no saved presets', () => {
@@ -455,17 +480,19 @@ describe('TottiBeat UI regressions', () => {
     expect(document.querySelector('.load-btn')).not.toBeNull();
   });
 
-  it('shows expert controls when expert mode is selected', () => {
+  it('shows expert controls with subdivision wording that clarifies it adds extra pulse clicks', () => {
     const { document } = createApp();
 
     document.querySelector('[data-mode="expert"]').click();
 
     expect(document.querySelector('.mode-btn.active')?.dataset.mode).toBe('expert');
     expect(document.querySelector('[data-mode-section="expert"]')?.hidden).toBe(false);
-    expect(document.getElementById('app-subtitle').textContent).toContain('Advanced practice tools');
+    expect(document.getElementById('app-subtitle').textContent).toContain('Advanced controls for pulse, accents, and practice workflows');
+    expect(document.querySelector('.subdivision-section .section-label')?.textContent).toContain('Beat subdivision');
+    expect(document.querySelector('.subdivision-section .section-hint')?.textContent).toContain('Extra pulse clicks between each beat');
   });
 
-  it('returns to easy mode without changing tempo or time signature', () => {
+  it('keeps beat timing independent from expert subdivision choices when returning to easy mode', () => {
     const { document, window } = createApp();
     const bpmInput = document.getElementById('bpm-input');
 
@@ -482,7 +509,26 @@ describe('TottiBeat UI regressions', () => {
     expect(document.querySelector('[data-denominator="8"]')?.classList.contains('active')).toBe(true);
     expect(document.getElementById('time-signature-preview')?.textContent).toBe('7/8');
     expect(bpmInput.value).toBe('144');
+    expect(window.__metro.subdivision).toBe('quarter');
+    expect(window.__metro._beatInterval()).toBeCloseTo((60 / 144) * 0.5, 5);
     expect(document.querySelector('[data-mode-section="expert"]')?.hidden).toBe(true);
+  });
+
+  it('keeps expert subdivision choices when loading expert presets', () => {
+    const { document } = createApp();
+
+    document.querySelector('[data-mode="expert"]').click();
+    document.querySelector('[data-subdivision="triplet"]').click();
+    document.querySelector('.save-btn').click();
+    document.getElementById('preset-name-input').value = 'Triplet Practice';
+    document.getElementById('preset-modal-confirm').click();
+
+    document.querySelector('[data-subdivision="quarter"]').click();
+    document.querySelector('.load-btn').click();
+
+    expect(document.querySelector('.mode-btn.active')?.dataset.mode).toBe('expert');
+    expect(document.querySelector('.subdivision-btn.active')?.dataset.subdivision).toBe('triplet');
+    expect(document.querySelector('.subdivision-section .section-hint')?.textContent ?? '').toContain('Extra pulse clicks between each beat');
   });
 
   it('persists the selected app mode when saving and loading a preset', () => {
