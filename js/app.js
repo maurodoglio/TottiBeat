@@ -52,6 +52,12 @@ const LOOKAHEAD_MS = 25;          // scheduler interval
 const SCHEDULE_AHEAD = 0.12;      // seconds to look ahead
 const TAP_TEMPO_RESET_MS = 2000;
 const TAP_TEMPO_MAX_INTERVALS = 6;
+const DEFAULT_PRACTICE_SETTINGS = Object.freeze({
+  enabled: false,
+  barsBeforeIncrease: 4,
+  bpmStep: 5,
+  maxBpm: 160,
+});
 
 /* ════════════════════════════════════════════════════════════
    SoundEngine – Web Audio synthesis
@@ -240,6 +246,7 @@ class Metronome {
     this._noteQueue    = [];
 
     this.onBeat        = null; // callback(beatIndex, time)
+    this.onBarEnd      = null;
   }
 
   _defaultSettings(n) {
@@ -310,6 +317,10 @@ class Metronome {
   }
 
   _advance() {
+    const completedBeat = this._currentBeat;
+    if (completedBeat === this.beatsPerBar - 1 && this.onBarEnd) {
+      this.onBarEnd();
+    }
     this._nextNoteTime += this._beatInterval();
     this._currentBeat   = (this._currentBeat + 1) % this.beatsPerBar;
   }
@@ -410,6 +421,11 @@ class UI {
     this._tapTimes        = [];
     this._modalState      = null;
     this._modalTrigger    = null;
+    this._practice = {
+      ...DEFAULT_PRACTICE_SETTINGS,
+      completedBars: 0,
+      awaitingBarBoundary: false,
+    };
 
     this._bindElements();
     this._buildBeatsPerBar();
@@ -421,10 +437,13 @@ class UI {
     this._attachEvents();
     this._syncBpmDisplay();
     this._syncUniformToggle();
+    this._syncPracticeControls();
+    this._syncPracticeStatus();
     this._syncTapTempoButton();
 
     // Visual beat callback
-    this.metro.onBeat = (beat) => this._flashBeat(beat);
+    this.metro.onBeat = (beat) => this._handleBeat(beat);
+    this.metro.onBarEnd = () => this._handlePracticeBarEnd();
   }
 
   /* ── Element cache ─────────────────────────────────────── */
@@ -440,6 +459,11 @@ class UI {
     this.beatCircles    = this.$('beat-circles');
     this.playBtn        = this.$('play-btn');
     this.tapBtn         = this.$('tap-btn');
+    this.practiceToggle = this.$('practice-mode-toggle');
+    this.practiceBarsInput = this.$('practice-bars-input');
+    this.practiceStepInput = this.$('practice-step-input');
+    this.practiceMaxInput = this.$('practice-max-bpm-input');
+    this.practiceStatus = this.$('practice-status');
     this.uniformToggle  = this.$('uniform-toggle');
     this.uniformPanel   = this.$('uniform-panel');
     this.perBeatPanel   = this.$('per-beat-panel');
@@ -698,7 +722,15 @@ class UI {
 
     if (this._modalState.mode === 'save') {
       const name = this.presetNameInput.value.trim() || `Preset ${this._modalState.index + 1}`;
-      this.store.save(this._modalState.index, name, this.metro.getState());
+      this.store.save(this._modalState.index, name, {
+        ...this.metro.getState(),
+        practiceMode: {
+          enabled: this._practice.enabled,
+          barsBeforeIncrease: this._practice.barsBeforeIncrease,
+          bpmStep: this._practice.bpmStep,
+          maxBpm: this._practice.maxBpm,
+        },
+      });
       this._buildPresets();
       this._closePresetModal();
       return;
@@ -747,6 +779,120 @@ class UI {
     const label = this._tapTimes.length >= 2 ? `Tap Tempo · ${this.metro.bpm} BPM` : 'Tap Tempo';
     this.tapBtn.textContent = label;
     this.tapBtn.setAttribute('aria-label', label);
+  }
+
+  _sanitizePracticeNumber(value, fallback, { min, max }) {
+    const parsed = parseInt(value, 10);
+    if (Number.isNaN(parsed)) return fallback;
+    return Math.min(max, Math.max(min, parsed));
+  }
+
+  _syncPracticeControls() {
+    this.practiceToggle.checked = this._practice.enabled;
+    this.practiceBarsInput.value = String(this._practice.barsBeforeIncrease);
+    this.practiceStepInput.value = String(this._practice.bpmStep);
+    this.practiceMaxInput.value = String(this._practice.maxBpm);
+  }
+
+  _syncPracticeStatus() {
+    if (!this._practice.enabled) {
+      this.practiceStatus.textContent = 'Practice mode · Off';
+      return;
+    }
+
+    if (this.metro.bpm >= this._practice.maxBpm) {
+      this.practiceStatus.textContent = `Practice mode · Max ${this._practice.maxBpm} BPM reached`;
+      return;
+    }
+
+    if (this._practice.awaitingBarBoundary) {
+      this.practiceStatus.textContent = `Practice mode · Will increase after ${this._practice.barsBeforeIncrease} full bars at ${this.metro.bpm} BPM`;
+      return;
+    }
+
+    if (this._practice.completedBars === 0) {
+      this.practiceStatus.textContent = `Practice mode · Waiting for bar 1 of ${this._practice.barsBeforeIncrease} at ${this.metro.bpm} BPM`;
+      return;
+    }
+
+    this.practiceStatus.textContent = `Practice mode · Bar ${this._practice.completedBars} / ${this._practice.barsBeforeIncrease} at ${this.metro.bpm} BPM`;
+  }
+
+  _resetPracticeProgress() {
+    this._practice.completedBars = 0;
+    this._practice.awaitingBarBoundary = this.metro.isPlaying;
+    this._syncPracticeStatus();
+  }
+
+  _loadPracticeSettings(settings = {}) {
+    this._practice.enabled = Boolean(settings.enabled ?? DEFAULT_PRACTICE_SETTINGS.enabled);
+    this._practice.barsBeforeIncrease = this._sanitizePracticeNumber(
+      settings.barsBeforeIncrease,
+      DEFAULT_PRACTICE_SETTINGS.barsBeforeIncrease,
+      { min: 1, max: 32 }
+    );
+    this._practice.bpmStep = this._sanitizePracticeNumber(
+      settings.bpmStep,
+      DEFAULT_PRACTICE_SETTINGS.bpmStep,
+      { min: 1, max: 50 }
+    );
+    this._practice.maxBpm = this._sanitizePracticeNumber(
+      settings.maxBpm,
+      DEFAULT_PRACTICE_SETTINGS.maxBpm,
+      { min: 20, max: 300 }
+    );
+    this._practice.completedBars = 0;
+    this._practice.awaitingBarBoundary = false;
+    this._syncPracticeControls();
+    this._syncPracticeStatus();
+  }
+
+  _handlePracticeBarStart() {
+    if (!this._practice.enabled) return;
+
+    if (this._practice.awaitingBarBoundary) {
+      this._practice.awaitingBarBoundary = false;
+      this._syncPracticeStatus();
+    }
+  }
+
+  _handlePracticeBarEnd() {
+    if (!this._practice.enabled || this._practice.awaitingBarBoundary) return;
+
+    this._practice.completedBars += 1;
+    if (this._practice.completedBars < this._practice.barsBeforeIncrease) {
+      this._syncPracticeStatus();
+      return;
+    }
+
+    if (this.metro.bpm >= this._practice.maxBpm) {
+      this._practice.completedBars = 0;
+      this._syncPracticeStatus();
+      return;
+    }
+
+    const nextBpm = Math.min(this._practice.maxBpm, this.metro.bpm + this._practice.bpmStep);
+    this._practice.completedBars = 0;
+
+    if (nextBpm === this.metro.bpm) {
+      this._syncPracticeStatus();
+      return;
+    }
+
+    this._practice.awaitingBarBoundary = true;
+    this.metro.bpm = nextBpm;
+    this.bpmInput.value = nextBpm;
+    this.bpmSlider.value = nextBpm;
+    this.tempoName.textContent = this._tempoName(nextBpm);
+    this._syncPracticeStatus();
+    this._syncTapTempoButton();
+  }
+
+  _handleBeat(beat) {
+    if (beat === 0) {
+      this._handlePracticeBarStart();
+    }
+    this._flashBeat(beat);
   }
 
   _buildPresets() {
@@ -915,6 +1061,42 @@ class UI {
       }
     });
 
+    this.practiceToggle.addEventListener('change', () => {
+      this._practice.enabled = this.practiceToggle.checked;
+      this._resetPracticeProgress();
+      this._syncPracticeControls();
+    });
+
+    this.practiceBarsInput.addEventListener('input', () => {
+      this._practice.barsBeforeIncrease = this._sanitizePracticeNumber(
+        this.practiceBarsInput.value,
+        this._practice.barsBeforeIncrease,
+        { min: 1, max: 32 }
+      );
+      this._syncPracticeControls();
+      this._resetPracticeProgress();
+    });
+
+    this.practiceStepInput.addEventListener('input', () => {
+      this._practice.bpmStep = this._sanitizePracticeNumber(
+        this.practiceStepInput.value,
+        this._practice.bpmStep,
+        { min: 1, max: 50 }
+      );
+      this._syncPracticeControls();
+      this._resetPracticeProgress();
+    });
+
+    this.practiceMaxInput.addEventListener('input', () => {
+      this._practice.maxBpm = this._sanitizePracticeNumber(
+        this.practiceMaxInput.value,
+        this._practice.maxBpm,
+        { min: 20, max: 300 }
+      );
+      this._syncPracticeControls();
+      this._resetPracticeProgress();
+    });
+
     // Popover close
     this.popoverClose.addEventListener('click', () => this._closePopover());
     this.popoverBdrop.addEventListener('click', () => this._closePopover());
@@ -976,6 +1158,7 @@ class UI {
   async _togglePlay() {
     if (this.metro.isPlaying) {
       this.metro.stop();
+      this._resetPracticeProgress();
       this._resetBeatCircles();
       this.playBtn.classList.remove('playing');
       this.playBtn.querySelector('.play-icon').textContent = '▶';
@@ -984,6 +1167,7 @@ class UI {
     } else {
       // Ensure AudioContext is created and running within this user gesture.
       await this.metro.sound.resume();
+      this._resetPracticeProgress();
       this.metro.start();
       this.playBtn.classList.add('playing');
       this.playBtn.querySelector('.play-icon').textContent = '⏹';
@@ -998,6 +1182,7 @@ class UI {
     if (!this.popover.classList.contains('hidden')) this._closePopover();
 
     this.metro.setBeatsPerBar(n);
+    this._resetPracticeProgress();
 
     // Update BPB buttons
     this.bpbGrid.querySelectorAll('.beats-btn').forEach((btn) => {
@@ -1020,7 +1205,7 @@ class UI {
     }
   }
 
-  _setBpm(val, { preserveTapHistory = false } = {}) {
+  _setBpm(val, { preserveTapHistory = false, resetPracticeProgress = true } = {}) {
     val = Math.min(300, Math.max(20, val || 20));
     this.metro.bpm       = val;
     this.bpmInput.value  = val;
@@ -1028,6 +1213,11 @@ class UI {
     this.tempoName.textContent = this._tempoName(val);
     if (!preserveTapHistory) {
       this._tapTimes = [];
+    }
+    if (resetPracticeProgress) {
+      this._resetPracticeProgress();
+    } else {
+      this._syncPracticeStatus();
     }
     this._syncTapTempoButton();
   }
@@ -1104,6 +1294,7 @@ class UI {
     if (!this.popover.classList.contains('hidden')) this._closePopover();
 
     this.metro.loadState(p.state);
+    this._loadPracticeSettings(p.state.practiceMode);
 
     this._syncBpmDisplay();
     this._buildSubdivisionControls();

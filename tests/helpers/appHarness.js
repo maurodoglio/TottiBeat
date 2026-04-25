@@ -135,11 +135,8 @@ function createApp(options = {}) {
   window.Date.now = createNowStub(options.nowValues);
 
   const instrumentedScript = appScript.replace(
-    "  const metro  = new Metronome(sound);",
-    "  const metro  = new Metronome(sound);\n  window.__metro = metro;\n  window.__sound = sound;"
-  ).replace(
-    "  new UI(metro, store); // eslint-disable-line no-new",
-    "  window.__ui = new UI(metro, store); // eslint-disable-line no-new"
+    "document.addEventListener('DOMContentLoaded', () => {\n  const sound  = new SoundEngine();\n  const metro  = new Metronome(sound);\n  const store  = new SettingsStore();\n  new UI(metro, store); // eslint-disable-line no-new\n});",
+    "(() => {\n  const sound  = new SoundEngine();\n  const metro  = new Metronome(sound);\n  window.__metro = metro;\n  window.__sound = sound;\n  const store  = new SettingsStore();\n  window.__ui = new UI(metro, store); // eslint-disable-line no-new\n})();"
   );
 
   const scriptEl = window.document.createElement('script');

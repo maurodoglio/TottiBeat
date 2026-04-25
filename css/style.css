@@ -213,6 +213,7 @@ body {
 .icon-btn:focus-visible,
 .beats-btn:focus-visible,
 .subdivision-btn:focus-visible,
+.practice-field input:focus-visible,
 .play-btn:focus-visible,
 .tap-btn:focus-visible,
 .sound-btn:focus-visible,
@@ -316,6 +317,35 @@ body {
   background: rgba(108,99,255,0.18);
   border-color: var(--accent);
   color: var(--text);
+}
+
+.practice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.75rem;
+}
+
+.practice-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.practice-field input {
+  width: 100%;
+  padding: 0.7rem 0.8rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.practice-status {
+  margin-top: 0.9rem;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  line-height: 1.5;
 }
 
 /* ─── Beat Settings ─────────────────────────────────────── */
