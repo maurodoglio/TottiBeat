@@ -51,6 +51,34 @@
         </div>
       </section>
 
+      <section class="card practice-section" aria-label="Practice mode">
+        <div class="settings-header">
+          <span class="section-label">Practice Mode</span>
+          <label class="toggle-label">
+            <input type="checkbox" id="practice-mode-toggle" />
+            <span class="toggle-track"></span>
+            <span class="toggle-text">Auto-increase tempo</span>
+          </label>
+        </div>
+
+        <div class="practice-grid" id="practice-grid">
+          <label class="practice-field" for="practice-bars-input">
+            <span class="config-label">Bars per step</span>
+            <input type="number" id="practice-bars-input" min="1" max="32" value="4" />
+          </label>
+          <label class="practice-field" for="practice-step-input">
+            <span class="config-label">BPM increase</span>
+            <input type="number" id="practice-step-input" min="1" max="50" value="5" />
+          </label>
+          <label class="practice-field" for="practice-max-bpm-input">
+            <span class="config-label">Max BPM</span>
+            <input type="number" id="practice-max-bpm-input" min="20" max="300" value="160" />
+          </label>
+        </div>
+
+        <p class="practice-status" id="practice-status" aria-live="polite">Practice mode · Off</p>
+      </section>
+
       <!-- ── Visual Beat Display ───────────────────────── -->
       <section class="card beat-display-section" aria-label="Beat display">
         <div class="beat-circles" id="beat-circles">

@@ -368,6 +368,304 @@ describe('TottiBeat UI regressions', () => {
     expect(document.querySelector('.subdivision-btn.active')?.dataset.subdivision).toBe('quarter');
   });
 
+  it('renders practice mode controls with sensible defaults', () => {
+    const { document } = createApp();
+
+    expect(document.getElementById('practice-mode-toggle')).not.toBeNull();
+    expect(document.getElementById('practice-bars-input').value).toBe('4');
+    expect(document.getElementById('practice-step-input').value).toBe('5');
+    expect(document.getElementById('practice-max-bpm-input').value).toBe('160');
+    expect(document.getElementById('practice-status').textContent).toContain('Off');
+  });
+
+  it('increases BPM only after the configured number of full bars in practice mode', () => {
+    const { document, window } = createApp();
+    const practiceToggle = document.getElementById('practice-mode-toggle');
+    const barsInput = document.getElementById('practice-bars-input');
+    const stepInput = document.getElementById('practice-step-input');
+    const maxInput = document.getElementById('practice-max-bpm-input');
+    const bpmInput = document.getElementById('bpm-input');
+
+    practiceToggle.checked = true;
+    practiceToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
+    barsInput.value = '2';
+    barsInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    stepInput.value = '3';
+    stepInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    maxInput.value = '130';
+    maxInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+
+    window.__ui._handlePracticeBarEnd();
+    expect(bpmInput.value).toBe('120');
+    expect(document.getElementById('practice-status').textContent).toContain('1 / 2');
+
+    window.__ui._handlePracticeBarEnd();
+    expect(bpmInput.value).toBe('123');
+    expect(document.getElementById('practice-status').textContent).toContain('Will increase after 2 full bars');
+
+    window.__ui._handleBeat(0);
+    expect(bpmInput.value).toBe('123');
+    expect(document.getElementById('practice-status').textContent).toContain('Waiting for bar 1 of 2');
+  });
+
+  it('does not count a partial bar when practice mode is enabled mid-bar during playback', () => {
+    const { document, window } = createApp();
+    const practiceToggle = document.getElementById('practice-mode-toggle');
+    const barsInput = document.getElementById('practice-bars-input');
+    const stepInput = document.getElementById('practice-step-input');
+    const bpmInput = document.getElementById('bpm-input');
+
+    window.__metro.isPlaying = true;
+    practiceToggle.checked = true;
+    practiceToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
+    barsInput.value = '1';
+    barsInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    stepInput.value = '10';
+    stepInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+
+    window.__ui._handlePracticeBarEnd();
+    expect(bpmInput.value).toBe('120');
+
+    window.__ui._handleBeat(0);
+    expect(bpmInput.value).toBe('120');
+  });
+
+  it('advances practice mode through the live beat callback path', () => {
+    const { document, window } = createApp();
+    const practiceToggle = document.getElementById('practice-mode-toggle');
+    const barsInput = document.getElementById('practice-bars-input');
+    const stepInput = document.getElementById('practice-step-input');
+    const bpmInput = document.getElementById('bpm-input');
+
+    practiceToggle.checked = true;
+    practiceToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
+    barsInput.value = '1';
+    barsInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    stepInput.value = '4';
+    stepInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+
+    window.__metro.onBarEnd();
+    window.__metro.onBeat(0);
+
+    expect(bpmInput.value).toBe('124');
+    expect(document.getElementById('practice-status').textContent).toContain('Waiting for bar 1 of 1');
+  });
+
+  it('does not increase BPM past the configured practice mode maximum', () => {
+    const { document, window } = createApp();
+    const practiceToggle = document.getElementById('practice-mode-toggle');
+    const barsInput = document.getElementById('practice-bars-input');
+    const stepInput = document.getElementById('practice-step-input');
+    const maxInput = document.getElementById('practice-max-bpm-input');
+    const bpmInput = document.getElementById('bpm-input');
+
+    practiceToggle.checked = true;
+    practiceToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
+    barsInput.value = '1';
+    barsInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    stepInput.value = '5';
+    stepInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    maxInput.value = '125';
+    maxInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+
+    window.__ui._handlePracticeBarEnd();
+    expect(bpmInput.value).toBe('125');
+
+    window.__ui._handlePracticeBarEnd();
+    expect(bpmInput.value).toBe('125');
+    expect(document.getElementById('practice-status').textContent).toContain('Max 125 BPM reached');
+  });
+
+  it('does not carry practice mode progress across stop and restart', async () => {
+    const { document, window } = createApp();
+    const practiceToggle = document.getElementById('practice-mode-toggle');
+    const barsInput = document.getElementById('practice-bars-input');
+    const stepInput = document.getElementById('practice-step-input');
+    const playButton = document.getElementById('play-btn');
+    const bpmInput = document.getElementById('bpm-input');
+
+    practiceToggle.checked = true;
+    practiceToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
+    barsInput.value = '2';
+    barsInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    stepInput.value = '4';
+    stepInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+
+    await window.__ui._togglePlay();
+    window.__ui._handlePracticeBarEnd();
+    expect(document.getElementById('practice-status').textContent).toContain('Bar 1 / 2');
+
+    await window.__ui._togglePlay();
+    await window.__ui._togglePlay();
+    window.__ui._handlePracticeBarEnd();
+
+    expect(bpmInput.value).toBe('120');
+    expect(document.getElementById('practice-status').textContent).toContain('Bar 1 / 2');
+    expect(playButton.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('resets practice mode progress after a manual BPM change', () => {
+    const { document, window } = createApp();
+    const practiceToggle = document.getElementById('practice-mode-toggle');
+    const barsInput = document.getElementById('practice-bars-input');
+    const bpmInput = document.getElementById('bpm-input');
+
+    practiceToggle.checked = true;
+    practiceToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
+    barsInput.value = '2';
+    barsInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+
+    window.__ui._handlePracticeBarEnd();
+    expect(document.getElementById('practice-status').textContent).toContain('1 / 2');
+
+    bpmInput.value = '132';
+    bpmInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+
+    expect(document.getElementById('practice-status').textContent).toContain('Waiting for bar 1 of 2');
+  });
+
+  it('does not count a partial bar after a manual BPM change during playback', () => {
+    const { document, window } = createApp();
+    const practiceToggle = document.getElementById('practice-mode-toggle');
+    const barsInput = document.getElementById('practice-bars-input');
+    const stepInput = document.getElementById('practice-step-input');
+    const bpmInput = document.getElementById('bpm-input');
+
+    window.__metro.isPlaying = true;
+    practiceToggle.checked = true;
+    practiceToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
+    barsInput.value = '1';
+    barsInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    stepInput.value = '10';
+    stepInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+
+    bpmInput.value = '132';
+    bpmInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+
+    window.__ui._handleBeat(3);
+    expect(bpmInput.value).toBe('132');
+
+    window.__ui._handleBeat(0);
+    expect(bpmInput.value).toBe('132');
+  });
+
+  it('does not lower BPM when practice mode max is below the current tempo', () => {
+    const { document, window } = createApp();
+    const practiceToggle = document.getElementById('practice-mode-toggle');
+    const barsInput = document.getElementById('practice-bars-input');
+    const stepInput = document.getElementById('practice-step-input');
+    const maxInput = document.getElementById('practice-max-bpm-input');
+    const bpmInput = document.getElementById('bpm-input');
+
+    bpmInput.value = '200';
+    bpmInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+
+    practiceToggle.checked = true;
+    practiceToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
+    barsInput.value = '1';
+    barsInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    stepInput.value = '10';
+    stepInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    maxInput.value = '160';
+    maxInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+
+    window.__ui._handlePracticeBarEnd();
+
+    expect(bpmInput.value).toBe('200');
+    expect(document.getElementById('practice-status').textContent).toContain('Max 160 BPM reached');
+  });
+
+  it('applies practice mode BPM increases before scheduling the next bar', () => {
+    const { document, window } = createApp();
+    const practiceToggle = document.getElementById('practice-mode-toggle');
+    const barsInput = document.getElementById('practice-bars-input');
+    const stepInput = document.getElementById('practice-step-input');
+    const scheduled = [];
+
+    practiceToggle.checked = true;
+    practiceToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
+    barsInput.value = '1';
+    barsInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    stepInput.value = '30';
+    stepInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+
+    window.__metro.sound.play = (type, time) => {
+      scheduled.push({ type, time });
+    };
+    window.__metro.beatsPerBar = 1;
+    window.__metro._currentBeat = 0;
+    window.__metro._nextNoteTime = 10;
+
+    window.__metro._scheduleNote(0, 10);
+    window.__metro._advance();
+
+    expect(window.__metro.bpm).toBe(150);
+    expect(window.__metro._nextNoteTime).toBeCloseTo(10.4, 5);
+    expect(scheduled).toEqual([{ type: 'tick', time: 10 }]);
+  });
+
+  it('resets practice mode progress when beats per bar changes', () => {
+    const { document, window } = createApp();
+    const practiceToggle = document.getElementById('practice-mode-toggle');
+    const barsInput = document.getElementById('practice-bars-input');
+    const stepInput = document.getElementById('practice-step-input');
+    const bpmInput = document.getElementById('bpm-input');
+
+    practiceToggle.checked = true;
+    practiceToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
+    barsInput.value = '2';
+    barsInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    stepInput.value = '5';
+    stepInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+
+    window.__ui._handlePracticeBarEnd();
+    expect(document.getElementById('practice-status').textContent).toContain('1 / 2');
+
+    document.querySelector('[data-beats="3"]').click();
+    expect(document.getElementById('practice-status').textContent).toContain('Waiting for bar 1 of 2');
+
+    window.__ui._handlePracticeBarEnd();
+    expect(bpmInput.value).toBe('120');
+    expect(document.getElementById('practice-status').textContent).toContain('1 / 2');
+  });
+
+  it('persists practice mode settings when saving and loading a preset', () => {
+    const { document, window } = createApp();
+    const practiceToggle = document.getElementById('practice-mode-toggle');
+    const barsInput = document.getElementById('practice-bars-input');
+    const stepInput = document.getElementById('practice-step-input');
+    const maxInput = document.getElementById('practice-max-bpm-input');
+
+    practiceToggle.checked = true;
+    practiceToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
+    barsInput.value = '3';
+    barsInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    stepInput.value = '7';
+    stepInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    maxInput.value = '175';
+    maxInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+
+    document.querySelector('.save-btn').click();
+    document.getElementById('preset-name-input').value = 'Practice Builder';
+    document.getElementById('preset-modal-confirm').click();
+
+    practiceToggle.checked = false;
+    practiceToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
+    barsInput.value = '1';
+    barsInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    stepInput.value = '1';
+    stepInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    maxInput.value = '130';
+    maxInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+
+    document.querySelector('.load-btn').click();
+
+    expect(document.getElementById('practice-mode-toggle').checked).toBe(true);
+    expect(document.getElementById('practice-bars-input').value).toBe('3');
+    expect(document.getElementById('practice-step-input').value).toBe('7');
+    expect(document.getElementById('practice-max-bpm-input').value).toBe('175');
+  });
+
   it('persists subdivision selection when saving and loading a preset', () => {
     const { document } = createApp();
 
