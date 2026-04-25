@@ -1,0 +1,379 @@
+const { createApp } = require('./helpers/appHarness');
+
+describe('TottiBeat UI regressions', () => {
+  it('shows Prestissimo as the tempo mark at 300 BPM', () => {
+    const { document } = createApp();
+    const bpmInput = document.getElementById('bpm-input');
+
+    bpmInput.value = '300';
+    bpmInput.dispatchEvent(new document.defaultView.Event('input', { bubbles: true }));
+
+    expect(document.getElementById('tempo-name').textContent).toBe('Prestissimo');
+  });
+
+  it('keeps tempo names correct on bucket boundaries', () => {
+    const { document } = createApp();
+    const bpmInput = document.getElementById('bpm-input');
+
+    const expectations = [
+      ['40', 'Largo'],
+      ['60', 'Larghetto'],
+      ['120', 'Allegro'],
+    ];
+
+    expectations.forEach(([value, expected]) => {
+      bpmInput.value = value;
+      bpmInput.dispatchEvent(new document.defaultView.Event('input', { bubbles: true }));
+      expect(document.getElementById('tempo-name').textContent).toBe(expected);
+    });
+  });
+
+  it('keeps beat circles out of the tab order in uniform mode', () => {
+    const { document } = createApp();
+    const beatCircles = [...document.querySelectorAll('.beat-circle')];
+
+    expect(beatCircles.length).toBeGreaterThan(0);
+    expect(beatCircles.every((element) => element.tabIndex === -1)).toBe(true);
+    expect(beatCircles.every((element) => element.getAttribute('aria-disabled') === 'true')).toBe(true);
+  });
+
+  it('renders beat circles as keyboard-accessible buttons in per-beat mode', () => {
+    const { document, window } = createApp();
+    const uniformToggle = document.getElementById('uniform-toggle');
+
+    uniformToggle.checked = false;
+    uniformToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
+
+    const beatCircles = [...document.querySelectorAll('.beat-circle')];
+    expect(beatCircles.length).toBeGreaterThan(0);
+    expect(beatCircles.every((element) => element.tagName === 'BUTTON')).toBe(true);
+    expect(beatCircles.every((element) => element.tabIndex === 0)).toBe(true);
+    expect(beatCircles.every((element) => element.getAttribute('aria-disabled') === 'false')).toBe(true);
+  });
+
+  it('renders a tap tempo button', () => {
+    const { document } = createApp();
+    const tapTempoButton = document.getElementById('tap-btn');
+
+    expect(tapTempoButton).not.toBeNull();
+    expect(tapTempoButton.textContent).toContain('Tap');
+  });
+
+  it('updates BPM from successive tap tempo presses', () => {
+    const { document } = createApp({ nowValues: [1000, 1500, 2000, 2500] });
+    const tapTempoButton = document.getElementById('tap-btn');
+
+    tapTempoButton.click();
+    tapTempoButton.click();
+    tapTempoButton.click();
+    tapTempoButton.click();
+
+    expect(document.getElementById('bpm-input').value).toBe('120');
+    expect(document.getElementById('tempo-name').textContent).toBe('Allegro');
+    expect(tapTempoButton.textContent).toContain('120 BPM');
+  });
+
+  it('supports button-based tap tempo activation without requiring pointer input', () => {
+    const { document } = createApp({ nowValues: [1000, 1400] });
+    const tapTempoButton = document.getElementById('tap-btn');
+
+    tapTempoButton.focus();
+    tapTempoButton.click();
+    tapTempoButton.click();
+
+    expect(document.getElementById('bpm-input').value).toBe('150');
+  });
+
+  it('resets tap tempo history after a long pause', () => {
+    const { document } = createApp({ nowValues: [1000, 1500, 5000, 5500] });
+    const tapTempoButton = document.getElementById('tap-btn');
+
+    tapTempoButton.click();
+    tapTempoButton.click();
+    expect(document.getElementById('bpm-input').value).toBe('120');
+
+    tapTempoButton.click();
+    tapTempoButton.click();
+
+    expect(document.getElementById('bpm-input').value).toBe('120');
+    expect(tapTempoButton.textContent).toContain('120 BPM');
+  });
+
+  it('clears stale tap history after BPM is changed manually', () => {
+    const { document, window } = createApp({ nowValues: [1000, 1500, 1900] });
+    const tapTempoButton = document.getElementById('tap-btn');
+    const bpmInput = document.getElementById('bpm-input');
+
+    tapTempoButton.click();
+    tapTempoButton.click();
+    expect(bpmInput.value).toBe('120');
+
+    bpmInput.value = '60';
+    bpmInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    expect(tapTempoButton.textContent).toBe('Tap Tempo');
+
+    tapTempoButton.click();
+
+    expect(bpmInput.value).toBe('60');
+    expect(tapTempoButton.textContent).toBe('Tap Tempo');
+  });
+
+  it('closes the popover when loading a uniform preset', () => {
+    const { document, window } = createApp();
+    const uniformToggle = document.getElementById('uniform-toggle');
+
+    uniformToggle.checked = true;
+    uniformToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
+    document.querySelector('.save-btn').click();
+
+    const modal = document.getElementById('preset-modal');
+    const nameInput = document.getElementById('preset-name-input');
+    const confirmButton = document.getElementById('preset-modal-confirm');
+
+    expect(modal.classList.contains('hidden')).toBe(false);
+    nameInput.value = 'Uniform Practice';
+    confirmButton.click();
+
+    uniformToggle.checked = false;
+    uniformToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
+
+    const beatButton = document.querySelector('.beat-circle');
+    beatButton.focus();
+    beatButton.click();
+    expect(document.getElementById('beat-popover').classList.contains('hidden')).toBe(false);
+
+    document.querySelector('.load-btn').click();
+
+    expect(document.getElementById('beat-popover').classList.contains('hidden')).toBe(true);
+    expect(document.getElementById('uniform-toggle').checked).toBe(true);
+  });
+
+  it('opens an in-app preset modal instead of using prompt when saving', () => {
+    const { document } = createApp({ prompt: () => { throw new Error('prompt should not be called'); } });
+
+    document.querySelector('.save-btn').click();
+
+    const modal = document.getElementById('preset-modal');
+    const nameInput = document.getElementById('preset-name-input');
+    expect(modal.classList.contains('hidden')).toBe(false);
+    expect(document.activeElement).toBe(nameInput);
+  });
+
+  it('saves a preset from the in-app modal and updates the slot metadata', () => {
+    const { document } = createApp();
+
+    document.querySelector('.save-btn').focus();
+    document.querySelector('.save-btn').click();
+
+    const modal = document.getElementById('preset-modal');
+    const nameInput = document.getElementById('preset-name-input');
+    const confirmButton = document.getElementById('preset-modal-confirm');
+
+    nameInput.value = 'Studio Warmup';
+    confirmButton.click();
+
+    expect(modal.classList.contains('hidden')).toBe(true);
+    expect(document.querySelector('.preset-name').textContent).toBe('Studio Warmup');
+    expect(document.querySelector('.load-btn').disabled).toBe(false);
+    expect(document.querySelector('.del-btn').disabled).toBe(false);
+    expect(document.activeElement).toBe(document.querySelector('.save-btn'));
+  });
+
+  it('opens an in-app confirmation modal instead of using confirm when deleting', () => {
+    const { document } = createApp({ confirm: () => { throw new Error('confirm should not be called'); } });
+
+    document.querySelector('.save-btn').click();
+    document.getElementById('preset-name-input').value = 'To Remove';
+    document.getElementById('preset-modal-confirm').click();
+
+    document.querySelector('.del-btn').focus();
+    document.querySelector('.del-btn').click();
+
+    const modal = document.getElementById('preset-modal');
+    expect(modal.classList.contains('hidden')).toBe(false);
+    expect(document.getElementById('preset-modal-title').textContent).toContain('Delete');
+    expect(document.getElementById('preset-modal-confirm').textContent).toContain('Delete');
+  });
+
+  it('restores focus to the live save button after confirming preset deletion', () => {
+    const { document } = createApp();
+
+    document.querySelector('.save-btn').click();
+    document.getElementById('preset-name-input').value = 'Delete Me';
+    document.getElementById('preset-modal-confirm').click();
+
+    document.querySelector('.del-btn').focus();
+    document.querySelector('.del-btn').click();
+    document.getElementById('preset-modal-confirm').click();
+
+    expect(document.getElementById('preset-modal').classList.contains('hidden')).toBe(true);
+    expect(document.querySelector('.preset-name').textContent).toContain('Slot 1');
+    expect(document.activeElement).toBe(document.querySelector('.save-btn'));
+  });
+
+  it('renders popover color controls as keyboard-accessible buttons and allows changing color from the keyboard', () => {
+    const { document, window } = createApp();
+    const uniformToggle = document.getElementById('uniform-toggle');
+
+    uniformToggle.checked = false;
+    uniformToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
+
+    const beatButton = document.querySelector('.beat-circle');
+    beatButton.focus();
+    beatButton.click();
+
+    const colorButtons = [...document.querySelectorAll('#popover-color-picker .color-swatch')];
+    expect(colorButtons.length).toBeGreaterThan(1);
+    expect(colorButtons.every((element) => element.tagName === 'BUTTON')).toBe(true);
+
+    const alternativeColorButton = colorButtons.find((button) => button.getAttribute('aria-pressed') === 'false');
+    const selectedColorLabel = alternativeColorButton.getAttribute('aria-label');
+    alternativeColorButton.focus();
+    alternativeColorButton.click();
+
+    const refreshedColorButtons = [...document.querySelectorAll('#popover-color-picker .color-swatch')];
+    expect(refreshedColorButtons.some((button) => button.getAttribute('aria-pressed') === 'true')).toBe(true);
+    expect(document.getElementById('beat-popover').classList.contains('hidden')).toBe(false);
+    expect(document.activeElement.getAttribute('aria-label')).toBe(selectedColorLabel);
+  });
+
+  it('traps focus inside the popover when tabbing forward and backward', () => {
+    const { document, window } = createApp();
+    const uniformToggle = document.getElementById('uniform-toggle');
+
+    uniformToggle.checked = false;
+    uniformToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
+
+    const beatButton = document.querySelector('.beat-circle');
+    beatButton.focus();
+    beatButton.click();
+
+    const closeButton = document.getElementById('popover-close');
+    closeButton.focus();
+    document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+
+    const focusAfterForwardTab = document.activeElement;
+    expect(document.getElementById('beat-popover').contains(focusAfterForwardTab)).toBe(true);
+
+    const firstFocusable = document.querySelector('#popover-sound-picker .sound-btn');
+    firstFocusable.focus();
+    document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true }));
+
+    expect(document.activeElement).toBe(closeButton);
+  });
+
+  it('closes the popover when uniform mode is re-enabled', () => {
+    const { document, window } = createApp();
+    const uniformToggle = document.getElementById('uniform-toggle');
+
+    uniformToggle.checked = false;
+    uniformToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
+
+    const beatButton = document.querySelector('.beat-circle');
+    beatButton.focus();
+    beatButton.click();
+
+    uniformToggle.checked = true;
+    uniformToggle.focus();
+    uniformToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
+
+    expect(document.getElementById('beat-popover').classList.contains('hidden')).toBe(true);
+    expect(document.activeElement).toBe(uniformToggle);
+  });
+
+  it('closes the popover when beats-per-bar changes', () => {
+    const { document, window } = createApp();
+    const uniformToggle = document.getElementById('uniform-toggle');
+
+    uniformToggle.checked = false;
+    uniformToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
+
+    const beatButton = document.querySelector('.beat-circle');
+    beatButton.focus();
+    beatButton.click();
+
+    document.querySelector('[data-beats="3"]').click();
+
+    expect(document.getElementById('beat-popover').classList.contains('hidden')).toBe(true);
+    expect(document.querySelectorAll('.beat-circle')).toHaveLength(3);
+  });
+
+  it('opens and closes the beat popover from the keyboard and returns focus to the triggering beat control', async () => {
+    const { document, window } = createApp();
+    const uniformToggle = document.getElementById('uniform-toggle');
+
+    uniformToggle.checked = false;
+    uniformToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
+
+    const beatButton = document.querySelector('.beat-circle');
+    beatButton.focus();
+    beatButton.click();
+
+    const popover = document.getElementById('beat-popover');
+    expect(popover.classList.contains('hidden')).toBe(false);
+
+    document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    expect(popover.classList.contains('hidden')).toBe(true);
+    expect(document.activeElement).toBe(beatButton);
+  });
+
+  it('keeps focus anchored to the originating beat button after editing sound inside the popover', () => {
+    const { document, window } = createApp();
+    const uniformToggle = document.getElementById('uniform-toggle');
+
+    uniformToggle.checked = false;
+    uniformToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
+
+    const beatButton = document.querySelector('.beat-circle');
+    beatButton.focus();
+    beatButton.click();
+
+    const alternativeSoundButton = [...document.querySelectorAll('#popover-sound-picker .sound-btn')]
+      .find((button) => !button.classList.contains('active'));
+
+    alternativeSoundButton.click();
+    document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    expect(document.activeElement?.dataset.beat).toBe(beatButton.dataset.beat);
+    expect(document.activeElement?.classList.contains('beat-circle')).toBe(true);
+  });
+
+  it('keeps focus anchored to the originating beat button after editing color inside the popover', () => {
+    const { document, window } = createApp();
+    const uniformToggle = document.getElementById('uniform-toggle');
+
+    uniformToggle.checked = false;
+    uniformToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
+
+    const beatButton = document.querySelector('.beat-circle');
+    beatButton.focus();
+    beatButton.click();
+
+    const alternativeColorSwatch = [...document.querySelectorAll('#popover-color-picker .color-swatch')]
+      .find((swatch) => !swatch.classList.contains('active'));
+
+    alternativeColorSwatch.click();
+    document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    expect(document.activeElement?.dataset.beat).toBe(beatButton.dataset.beat);
+    expect(document.activeElement?.classList.contains('beat-circle')).toBe(true);
+  });
+
+  it('does not start playback when space is used to open a focused beat button', async () => {
+    const { document, window } = createApp();
+    const uniformToggle = document.getElementById('uniform-toggle');
+    const playButton = document.getElementById('play-btn');
+
+    uniformToggle.checked = false;
+    uniformToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
+
+    const beatButton = document.querySelector('.beat-circle');
+    beatButton.focus();
+    beatButton.click();
+    return Promise.resolve().then(() => {
+      expect(document.getElementById('beat-popover').classList.contains('hidden')).toBe(false);
+      expect(playButton.getAttribute('aria-pressed')).toBe('false');
+    });
+  });
+});

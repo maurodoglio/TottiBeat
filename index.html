@@ -57,6 +57,9 @@
           <span class="play-icon">▶</span>
           <span class="play-text">Start</span>
         </button>
+        <button class="tap-btn" id="tap-btn" type="button" aria-label="Tap tempo">
+          Tap Tempo
+        </button>
       </section>
 
       <!-- ── Beat Settings ─────────────────────────────── -->
@@ -111,6 +114,19 @@
     <button class="close-btn" id="popover-close" aria-label="Close">✕</button>
   </div>
   <div id="popover-backdrop" class="popover-backdrop hidden"></div>
+
+  <div id="preset-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="preset-modal-title" aria-describedby="preset-modal-description">
+    <div class="popover-title" id="preset-modal-title">Save preset</div>
+    <p class="modal-description" id="preset-modal-description"></p>
+    <label class="config-label hidden" id="preset-name-label" for="preset-name-input">Preset name</label>
+    <input class="modal-input hidden" id="preset-name-input" type="text" maxlength="40" autocomplete="off" />
+    <div class="modal-actions">
+      <button class="preset-btn" id="preset-modal-cancel" type="button">Cancel</button>
+      <button class="preset-btn save-btn" id="preset-modal-confirm" type="button">Save</button>
+    </div>
+    <button class="close-btn" id="preset-modal-close" aria-label="Close preset dialog" type="button">✕</button>
+  </div>
+  <div id="preset-modal-backdrop" class="popover-backdrop hidden"></div>
 
   <script src="js/app.js"></script>
 </body>

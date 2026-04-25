@@ -1,0 +1,12 @@
+{
+  "name": "tottibeat",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "vitest run --globals"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0",
+    "vitest": "^3.2.4"
+  }
+}
