@@ -66,7 +66,7 @@ const APP_MODES = Object.freeze({
     subtitle: 'Simple metronome for reading from your music sheet',
   },
   expert: {
-    subtitle: 'Advanced practice tools for detailed metronome work',
+    subtitle: 'Advanced controls for pulse, accents, and practice workflows',
   },
 });
 
