@@ -26,6 +26,13 @@ const BEAT_COLORS = [
   '#74c0fc', '#ff922b', '#e599f7', '#a9e34b',
 ];
 
+const SUBDIVISION_TYPES = [
+  { id: 'quarter', label: 'Quarter', stepsPerBeat: 1 },
+  { id: 'eighth', label: 'Eighths', stepsPerBeat: 2 },
+  { id: 'triplet', label: 'Triplets', stepsPerBeat: 3 },
+  { id: 'sixteenth', label: 'Sixteenths', stepsPerBeat: 4 },
+];
+
 const TEMPO_MARKS = [
   { min: 20,  max: 40,  name: 'Grave'       },
   { min: 40,  max: 60,  name: 'Largo'       },
@@ -222,6 +229,7 @@ class Metronome {
     this.useUniform    = true;
     this.uniformSound  = 'tick';
     this.uniformColor  = BEAT_COLORS[0];
+    this.subdivision   = 'quarter';
 
     this.isPlaying     = false;
     this._currentBeat  = 0;
@@ -270,6 +278,10 @@ class Metronome {
     return 60 / this.bpm;
   }
 
+  _subdivisionSteps() {
+    return SUBDIVISION_TYPES.find((option) => option.id === this.subdivision)?.stepsPerBeat || 1;
+  }
+
   _schedule() {
     const ctx = this.sound.ctx;
     while (this._nextNoteTime < ctx.currentTime + SCHEDULE_AHEAD) {
@@ -285,7 +297,16 @@ class Metronome {
       : this.beatSettings[beat].sound;
 
     this.sound.play(type, time);
-    this._noteQueue.push({ beat, time });
+    this._noteQueue.push({ beat, time, isSubdivision: false });
+
+    const steps = this._subdivisionSteps();
+    if (steps > 1 && type !== 'mute') {
+      const stepDuration = this._beatInterval() / steps;
+      for (let step = 1; step < steps; step++) {
+        this.sound.play('tick', time + (stepDuration * step));
+        this._noteQueue.push({ beat, time: time + (stepDuration * step), isSubdivision: true });
+      }
+    }
   }
 
   _advance() {
@@ -298,8 +319,8 @@ class Metronome {
 
     const now = this.sound.ctx.currentTime;
     while (this._noteQueue.length && this._noteQueue[0].time <= now) {
-      const { beat } = this._noteQueue.shift();
-      if (this.onBeat) this.onBeat(beat);
+      const { beat, isSubdivision } = this._noteQueue.shift();
+      if (!isSubdivision && this.onBeat) this.onBeat(beat);
     }
     requestAnimationFrame(() => this._visualLoop());
   }
@@ -313,6 +334,7 @@ class Metronome {
       useUniform:   this.useUniform,
       uniformSound: this.uniformSound,
       uniformColor: this.uniformColor,
+      subdivision:  this.subdivision,
     };
   }
 
@@ -322,6 +344,7 @@ class Metronome {
     this.useUniform   = state.useUniform   ?? this.useUniform;
     this.uniformSound = state.uniformSound ?? this.uniformSound;
     this.uniformColor = state.uniformColor ?? this.uniformColor;
+    this.subdivision  = state.subdivision  ?? this.subdivision;
 
     // setBeatsPerBar rebuilds beatSettings; then overlay saved values
     this.setBeatsPerBar(state.beatsPerBar ?? this.beatsPerBar);
@@ -390,6 +413,7 @@ class UI {
 
     this._bindElements();
     this._buildBeatsPerBar();
+    this._buildSubdivisionControls();
     this._buildBeatCircles();
     this._buildUniformPanel();
     this._buildPerBeatPanel();
@@ -412,6 +436,7 @@ class UI {
     this.bpmInc         = this.$('bpm-inc');
     this.tempoName      = this.$('tempo-name');
     this.bpbGrid        = this.$('beats-per-bar-grid');
+    this.subdivisionGrid = this.$('subdivision-grid');
     this.beatCircles    = this.$('beat-circles');
     this.playBtn        = this.$('play-btn');
     this.tapBtn         = this.$('tap-btn');
@@ -449,6 +474,20 @@ class UI {
       btn.addEventListener('click', () => this._onBeatsPerBar(i));
       this.bpbGrid.appendChild(btn);
     }
+  }
+
+  _buildSubdivisionControls() {
+    this.subdivisionGrid.innerHTML = '';
+    SUBDIVISION_TYPES.forEach(({ id, label }) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'subdivision-btn' + (id === this.metro.subdivision ? ' active' : '');
+      button.dataset.subdivision = id;
+      button.textContent = label;
+      button.setAttribute('aria-pressed', id === this.metro.subdivision ? 'true' : 'false');
+      button.addEventListener('click', () => this._setSubdivision(id));
+      this.subdivisionGrid.appendChild(button);
+    });
   }
 
   _buildBeatCircles() {
@@ -971,6 +1010,16 @@ class UI {
     if (wasPlaying) this.metro.start();
   }
 
+  _setSubdivision(id) {
+    if (!SUBDIVISION_TYPES.some((option) => option.id === id)) return;
+    this.metro.subdivision = id;
+    this._buildSubdivisionControls();
+    const activeButton = this.subdivisionGrid.querySelector(`[data-subdivision="${id}"]`);
+    if (activeButton && typeof activeButton.focus === 'function') {
+      activeButton.focus();
+    }
+  }
+
   _setBpm(val, { preserveTapHistory = false } = {}) {
     val = Math.min(300, Math.max(20, val || 20));
     this.metro.bpm       = val;
@@ -1057,6 +1106,7 @@ class UI {
     this.metro.loadState(p.state);
 
     this._syncBpmDisplay();
+    this._buildSubdivisionControls();
     this._buildBeatsPerBar();
     this._buildBeatCircles();
     this._buildUniformPanel();

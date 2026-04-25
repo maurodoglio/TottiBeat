@@ -134,7 +134,17 @@ function createApp(options = {}) {
   window.confirm = options.confirm || (() => true);
   window.Date.now = createNowStub(options.nowValues);
 
-  window.eval(appScript);
+  const instrumentedScript = appScript.replace(
+    "  const metro  = new Metronome(sound);",
+    "  const metro  = new Metronome(sound);\n  window.__metro = metro;\n  window.__sound = sound;"
+  ).replace(
+    "  new UI(metro, store); // eslint-disable-line no-new",
+    "  window.__ui = new UI(metro, store); // eslint-disable-line no-new"
+  );
+
+  const scriptEl = window.document.createElement('script');
+  scriptEl.textContent = instrumentedScript;
+  window.document.body.appendChild(scriptEl);
   window.document.dispatchEvent(new window.Event('DOMContentLoaded', { bubbles: true }));
 
   return {

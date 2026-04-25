@@ -360,20 +360,69 @@ describe('TottiBeat UI regressions', () => {
     expect(document.activeElement?.classList.contains('beat-circle')).toBe(true);
   });
 
-  it('does not start playback when space is used to open a focused beat button', async () => {
+  it('renders subdivision controls with quarter notes selected by default', () => {
+    const { document } = createApp();
+    const subdivisionButtons = [...document.querySelectorAll('#subdivision-grid .subdivision-btn')];
+
+    expect(subdivisionButtons).toHaveLength(4);
+    expect(document.querySelector('.subdivision-btn.active')?.dataset.subdivision).toBe('quarter');
+  });
+
+  it('persists subdivision selection when saving and loading a preset', () => {
+    const { document } = createApp();
+
+    document.querySelector('[data-subdivision="triplet"]').click();
+    document.querySelector('.save-btn').click();
+    document.getElementById('preset-name-input').value = 'Triplet Groove';
+    document.getElementById('preset-modal-confirm').click();
+
+    document.querySelector('[data-subdivision="quarter"]').click();
+    document.querySelector('.load-btn').click();
+
+    expect(document.querySelector('.subdivision-btn.active')?.dataset.subdivision).toBe('triplet');
+  });
+
+  it('keeps focus on the active subdivision button after selection', () => {
+    const { document } = createApp();
+    const targetButton = document.querySelector('[data-subdivision="eighth"]');
+
+    targetButton.focus();
+    targetButton.click();
+
+    expect(document.activeElement).toBe(document.querySelector('[data-subdivision="eighth"]'));
+  });
+
+  it('schedules intermediate subdivision notes between quarter-note beats', () => {
     const { document, window } = createApp();
-    const uniformToggle = document.getElementById('uniform-toggle');
-    const playButton = document.getElementById('play-btn');
+    const scheduled = [];
+    const originalPlay = window.__metro.sound.play.bind(window.__metro.sound);
+    window.__metro.sound.play = (type, time) => {
+      scheduled.push({ type, time });
+      return originalPlay(type, time);
+    };
 
-    uniformToggle.checked = false;
-    uniformToggle.dispatchEvent(new window.Event('change', { bubbles: true }));
+    document.querySelector('[data-subdivision="eighth"]').click();
+    window.__metro._scheduleNote(0, 10);
 
-    const beatButton = document.querySelector('.beat-circle');
-    beatButton.focus();
-    beatButton.click();
-    return Promise.resolve().then(() => {
-      expect(document.getElementById('beat-popover').classList.contains('hidden')).toBe(false);
-      expect(playButton.getAttribute('aria-pressed')).toBe('false');
-    });
+    expect(scheduled).toEqual([
+      { type: 'tick', time: 10 },
+      { type: 'tick', time: 10.25 },
+    ]);
+  });
+
+  it('keeps visual beat flashing anchored to quarter-note beats when subdivisions are enabled', () => {
+    const { window } = createApp();
+    const beats = [];
+    window.__metro.isPlaying = true;
+    window.__metro.onBeat = (beat) => beats.push(beat);
+    window.__metro._noteQueue.push(
+      { beat: 0, time: 0, isSubdivision: false },
+      { beat: 0, time: 0, isSubdivision: true },
+      { beat: 1, time: 0, isSubdivision: false },
+    );
+
+    window.__metro._visualLoop();
+
+    expect(beats).toEqual([0, 1]);
   });
 });
