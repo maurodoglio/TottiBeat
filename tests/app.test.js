@@ -368,6 +368,225 @@ describe('TottiBeat UI regressions', () => {
     expect(document.querySelector('.subdivision-btn.active')?.dataset.subdivision).toBe('quarter');
   });
 
+  it('defaults to easy mode and hides expert-only controls when there are no saved presets', () => {
+    const { document } = createApp();
+
+    expect(document.querySelector('.mode-btn.active')?.dataset.mode).toBe('easy');
+    expect(document.querySelector('[data-mode-section="expert"]')?.hidden).toBe(true);
+    expect(document.querySelector('[data-mode-section="always"]')?.hidden).toBe(false);
+    expect(document.getElementById('app-subtitle').textContent).toContain('Simple metronome');
+  });
+
+  it('surfaces the expert controls on initial load when legacy saved presets already exist', () => {
+    const seededPresets = JSON.stringify([
+      {
+        name: 'Saved Groove',
+        savedAt: 1,
+        state: {
+          bpm: 110,
+          beatsPerBar: 4,
+          beatSettings: [
+            { sound: 'accent', color: '#6c63ff' },
+            { sound: 'tick', color: '#ff6584' },
+            { sound: 'tick', color: '#38d9a9' },
+            { sound: 'tick', color: '#ffd43b' },
+          ],
+          useUniform: true,
+          uniformSound: 'tick',
+          uniformColor: '#6c63ff',
+          subdivision: 'quarter',
+        },
+      },
+      null,
+      null,
+      null,
+      null,
+    ]);
+
+    const { document } = createApp({
+      storage: {
+        tottibeat_presets: seededPresets,
+      },
+    });
+
+    expect(document.querySelector('.mode-btn.active')?.dataset.mode).toBe('expert');
+    expect(document.querySelector('[data-mode-section="expert"]')?.hidden).toBe(false);
+    expect(document.querySelector('.load-btn')).not.toBeNull();
+  });
+
+  it('shows expert controls when expert mode is selected', () => {
+    const { document } = createApp();
+
+    document.querySelector('[data-mode="expert"]').click();
+
+    expect(document.querySelector('.mode-btn.active')?.dataset.mode).toBe('expert');
+    expect(document.querySelector('[data-mode-section="expert"]')?.hidden).toBe(false);
+    expect(document.getElementById('app-subtitle').textContent).toContain('Advanced practice tools');
+  });
+
+  it('returns to easy mode without changing tempo or time signature', () => {
+    const { document, window } = createApp();
+    const bpmInput = document.getElementById('bpm-input');
+
+    document.querySelector('[data-beats="7"]').click();
+    bpmInput.value = '144';
+    bpmInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    document.querySelector('[data-mode="expert"]').click();
+    document.querySelector('[data-subdivision="triplet"]').click();
+    document.querySelector('[data-mode="easy"]').click();
+
+    expect(document.querySelector('.mode-btn.active')?.dataset.mode).toBe('easy');
+    expect(document.querySelector('.beats-btn.active')?.dataset.beats).toBe('7');
+    expect(bpmInput.value).toBe('144');
+    expect(document.querySelector('[data-mode-section="expert"]')?.hidden).toBe(true);
+  });
+
+  it('persists the selected app mode when saving and loading a preset', () => {
+    const { document } = createApp();
+
+    document.querySelector('[data-mode="expert"]').click();
+    document.querySelector('.save-btn').click();
+    document.getElementById('preset-name-input').value = 'Expert Setup';
+    document.getElementById('preset-modal-confirm').click();
+
+    document.querySelector('[data-mode="easy"]').click();
+    document.querySelector('.load-btn').click();
+
+    expect(document.querySelector('.mode-btn.active')?.dataset.mode).toBe('expert');
+    expect(document.querySelector('[data-mode-section="expert"]')?.hidden).toBe(false);
+  });
+
+  it('keeps beat circles non-interactive in easy mode even when expert per-beat settings were active', () => {
+    const { document, window } = createApp();
+
+    document.querySelector('[data-mode="expert"]').click();
+    document.getElementById('uniform-toggle').checked = false;
+    document.getElementById('uniform-toggle').dispatchEvent(new window.Event('change', { bubbles: true }));
+    document.querySelector('[data-mode="easy"]').click();
+
+    const firstBeat = document.querySelector('.beat-circle');
+    firstBeat.click();
+
+    expect(firstBeat.tabIndex).toBe(-1);
+    expect(firstBeat.getAttribute('aria-disabled')).toBe('true');
+    expect(document.getElementById('beat-popover').classList.contains('hidden')).toBe(true);
+  });
+
+  it('closes the beat popover when switching from expert mode back to easy mode', () => {
+    const { document, window } = createApp();
+
+    document.querySelector('[data-mode="expert"]').click();
+    document.getElementById('uniform-toggle').checked = false;
+    document.getElementById('uniform-toggle').dispatchEvent(new window.Event('change', { bubbles: true }));
+    document.querySelector('.beat-circle').click();
+    expect(document.getElementById('beat-popover').classList.contains('hidden')).toBe(false);
+
+    document.querySelector('[data-mode="easy"]').click();
+
+    expect(document.getElementById('beat-popover').classList.contains('hidden')).toBe(true);
+  });
+
+  it('loads easy mode presets without re-enabling expert beat editing affordances', () => {
+    const { document, window } = createApp();
+
+    document.querySelector('[data-mode="expert"]').click();
+    document.getElementById('uniform-toggle').checked = false;
+    document.getElementById('uniform-toggle').dispatchEvent(new window.Event('change', { bubbles: true }));
+    document.querySelector('[data-mode="easy"]').click();
+    document.querySelector('.save-btn').click();
+    document.getElementById('preset-name-input').value = 'Easy Reading';
+    document.getElementById('preset-modal-confirm').click();
+
+    document.querySelector('[data-mode="expert"]').click();
+    document.querySelector('.load-btn').click();
+
+    const firstBeat = document.querySelector('.beat-circle');
+    firstBeat.click();
+
+    expect(document.querySelector('.mode-btn.active')?.dataset.mode).toBe('easy');
+    expect(firstBeat.tabIndex).toBe(-1);
+    expect(firstBeat.getAttribute('aria-disabled')).toBe('true');
+    expect(document.getElementById('beat-popover').classList.contains('hidden')).toBe(true);
+    expect(document.activeElement).toBe(document.querySelector('[data-mode="easy"]'));
+  });
+
+  it('loads legacy presets without an app mode into expert mode for backward compatibility', () => {
+    const { document, window } = createApp();
+
+    window.localStorage.setItem('tottibeat_presets', JSON.stringify([
+      {
+        name: 'Legacy Expert',
+        savedAt: 1,
+        state: {
+          bpm: 120,
+          beatsPerBar: 4,
+          beatSettings: [
+            { sound: 'accent', color: '#6c63ff' },
+            { sound: 'tick', color: '#ff6584' },
+            { sound: 'tick', color: '#38d9a9' },
+            { sound: 'tick', color: '#ffd43b' },
+          ],
+          useUniform: false,
+          uniformSound: 'tick',
+          uniformColor: '#6c63ff',
+          subdivision: 'triplet',
+        },
+      },
+      null,
+      null,
+      null,
+      null,
+    ]));
+
+    window.__ui.store.presets = window.__ui.store._load();
+    window.__ui._buildPresets();
+    document.querySelector('.load-btn').click();
+
+    expect(document.querySelector('.mode-btn.active')?.dataset.mode).toBe('expert');
+    expect(document.querySelector('[data-mode-section="expert"]')?.hidden).toBe(false);
+    expect(document.querySelector('.subdivision-btn.active')?.dataset.subdivision).toBe('triplet');
+    expect(document.getElementById('uniform-toggle').checked).toBe(false);
+  });
+
+  it('switching to easy mode resets hidden expert-only behaviors to safe defaults', () => {
+    const { document, window } = createApp();
+
+    document.querySelector('[data-mode="expert"]').click();
+    document.querySelector('[data-subdivision="triplet"]').click();
+    document.getElementById('practice-mode-toggle').checked = true;
+    document.getElementById('practice-mode-toggle').dispatchEvent(new window.Event('change', { bubbles: true }));
+
+    document.querySelector('[data-mode="easy"]').click();
+
+    expect(document.querySelector('.subdivision-btn.active')?.dataset.subdivision).toBe('quarter');
+    expect(document.getElementById('practice-mode-toggle').checked).toBe(false);
+    expect(window.__metro.subdivision).toBe('quarter');
+    expect(window.__ui._practice.enabled).toBe(false);
+  });
+
+  it('loading an easy preset disables hidden expert-only behaviors', () => {
+    const { document, window } = createApp();
+
+    document.querySelector('[data-mode="expert"]').click();
+    document.querySelector('[data-subdivision="triplet"]').click();
+    document.getElementById('practice-mode-toggle').checked = true;
+    document.getElementById('practice-mode-toggle').dispatchEvent(new window.Event('change', { bubbles: true }));
+    document.querySelector('[data-mode="easy"]').click();
+    document.querySelector('.save-btn').click();
+    document.getElementById('preset-name-input').value = 'Easy Safe';
+    document.getElementById('preset-modal-confirm').click();
+
+    document.querySelector('[data-mode="expert"]').click();
+    document.querySelector('[data-subdivision="triplet"]').click();
+    document.getElementById('practice-mode-toggle').checked = true;
+    document.getElementById('practice-mode-toggle').dispatchEvent(new window.Event('change', { bubbles: true }));
+    document.querySelector('.load-btn').click();
+
+    expect(document.querySelector('.mode-btn.active')?.dataset.mode).toBe('easy');
+    expect(window.__metro.subdivision).toBe('quarter');
+    expect(window.__ui._practice.enabled).toBe(false);
+  });
+
   it('renders practice mode controls with sensible defaults', () => {
     const { document } = createApp();
 
@@ -666,9 +885,10 @@ describe('TottiBeat UI regressions', () => {
     expect(document.getElementById('practice-max-bpm-input').value).toBe('175');
   });
 
-  it('persists subdivision selection when saving and loading a preset', () => {
+  it('persists subdivision selection when saving and loading a preset in expert mode', () => {
     const { document } = createApp();
 
+    document.querySelector('[data-mode="expert"]').click();
     document.querySelector('[data-subdivision="triplet"]').click();
     document.querySelector('.save-btn').click();
     document.getElementById('preset-name-input').value = 'Triplet Groove';
@@ -677,6 +897,7 @@ describe('TottiBeat UI regressions', () => {
     document.querySelector('[data-subdivision="quarter"]').click();
     document.querySelector('.load-btn').click();
 
+    expect(document.querySelector('.mode-btn.active')?.dataset.mode).toBe('expert');
     expect(document.querySelector('.subdivision-btn.active')?.dataset.subdivision).toBe('triplet');
   });
 

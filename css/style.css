@@ -212,6 +212,7 @@ body {
 #bpm-input:focus-visible,
 .icon-btn:focus-visible,
 .beats-btn:focus-visible,
+.mode-btn:focus-visible,
 .subdivision-btn:focus-visible,
 .practice-field input:focus-visible,
 .play-btn:focus-visible,
@@ -289,6 +290,39 @@ body {
   background: rgba(108,99,255,0.15);
 }
 .tap-btn:active { transform: scale(0.97); }
+
+.mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.mode-btn {
+  padding: 0.8rem 1rem;
+  border-radius: 12px;
+  border: 2px solid var(--border);
+  background: var(--surface2);
+  color: var(--text-dim);
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition), color var(--transition), transform 0.1s;
+}
+
+.mode-btn:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.mode-btn:active {
+  transform: scale(0.98);
+}
+
+.mode-btn.active {
+  background: rgba(108,99,255,0.18);
+  border-color: var(--accent);
+  color: var(--text);
+}
 
 .subdivision-grid {
   display: grid;

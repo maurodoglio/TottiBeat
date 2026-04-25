@@ -59,6 +59,15 @@ const DEFAULT_PRACTICE_SETTINGS = Object.freeze({
   maxBpm: 160,
 });
 
+const APP_MODES = Object.freeze({
+  easy: {
+    subtitle: 'Simple metronome for reading from your music sheet',
+  },
+  expert: {
+    subtitle: 'Advanced practice tools for detailed metronome work',
+  },
+});
+
 /* ════════════════════════════════════════════════════════════
    SoundEngine – Web Audio synthesis
    ════════════════════════════════════════════════════════════ */
@@ -421,6 +430,7 @@ class UI {
     this._tapTimes        = [];
     this._modalState      = null;
     this._modalTrigger    = null;
+    this._appMode         = this._defaultAppMode();
     this._practice = {
       ...DEFAULT_PRACTICE_SETTINGS,
       completedBars: 0,
@@ -436,6 +446,7 @@ class UI {
     this._buildPresets();
     this._attachEvents();
     this._syncBpmDisplay();
+    this._syncMode();
     this._syncUniformToggle();
     this._syncPracticeControls();
     this._syncPracticeStatus();
@@ -453,6 +464,10 @@ class UI {
     this.bpmSlider      = this.$('bpm-slider');
     this.bpmDec         = this.$('bpm-dec');
     this.bpmInc         = this.$('bpm-inc');
+    this.appSubtitle    = this.$('app-subtitle');
+    this.modeControls   = this.$('app-mode-controls');
+    this.modeButtons    = [...document.querySelectorAll('.mode-btn')];
+    this.modeSections   = [...document.querySelectorAll('[data-mode-section]')];
     this.tempoName      = this.$('tempo-name');
     this.bpbGrid        = this.$('beats-per-bar-grid');
     this.subdivisionGrid = this.$('subdivision-grid');
@@ -724,6 +739,7 @@ class UI {
       const name = this.presetNameInput.value.trim() || `Preset ${this._modalState.index + 1}`;
       this.store.save(this._modalState.index, name, {
         ...this.metro.getState(),
+        appMode: this._appMode,
         practiceMode: {
           enabled: this._practice.enabled,
           barsBeforeIncrease: this._practice.barsBeforeIncrease,
@@ -779,6 +795,60 @@ class UI {
     const label = this._tapTimes.length >= 2 ? `Tap Tempo · ${this.metro.bpm} BPM` : 'Tap Tempo';
     this.tapBtn.textContent = label;
     this.tapBtn.setAttribute('aria-label', label);
+  }
+
+  _defaultAppMode() {
+    const hasSavedPresets = this.store.presets.some((preset) => preset && typeof preset === 'object');
+    return hasSavedPresets ? 'expert' : 'easy';
+  }
+
+  _syncMode() {
+    const config = APP_MODES[this._appMode] || APP_MODES.easy;
+    const isEasyMode = this._appMode === 'easy';
+    this.modeButtons.forEach((button) => {
+      const isActive = button.dataset.mode === this._appMode;
+      button.classList.toggle('active', isActive);
+      button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+    this.modeSections.forEach((section) => {
+      const sectionMode = section.dataset.modeSection;
+      section.hidden = sectionMode === 'expert' && isEasyMode;
+    });
+    if (isEasyMode) {
+      if (this.metro.subdivision !== 'quarter') {
+        this.metro.subdivision = 'quarter';
+        this._buildSubdivisionControls();
+      }
+      if (this._practice.enabled) {
+        this._practice.enabled = false;
+        this._syncPracticeControls();
+        this._resetPracticeProgress();
+      }
+      if (!this.metro.useUniform) {
+        this.metro.useUniform = true;
+      }
+      if (this.popover && !this.popover.classList.contains('hidden')) {
+        this._closePopover();
+      }
+      this._syncUniformToggle();
+      this._buildBeatCircles();
+    }
+    if (this.appSubtitle) {
+      this.appSubtitle.textContent = config.subtitle;
+    }
+  }
+
+  _setMode(mode, { restoreFocus = true } = {}) {
+    if (!APP_MODES[mode]) return;
+    this._appMode = mode;
+    this._syncMode();
+
+    if (restoreFocus || mode === 'easy') {
+      const activeButton = this.modeButtons.find((button) => button.dataset.mode === mode);
+      if (activeButton && typeof activeButton.focus === 'function') {
+        activeButton.focus();
+      }
+    }
   }
 
   _sanitizePracticeNumber(value, fallback, { min, max }) {
@@ -1037,6 +1107,9 @@ class UI {
     // Play/Stop
     this.playBtn.addEventListener('click', () => this._togglePlay());
     this.tapBtn.addEventListener('click', () => this._registerTapTempoTap());
+    this.modeButtons.forEach((button) => {
+      button.addEventListener('click', () => this._setMode(button.dataset.mode));
+    });
 
     // Space bar = play/stop
     document.addEventListener('keydown', (e) => {
@@ -1294,6 +1367,7 @@ class UI {
     if (!this.popover.classList.contains('hidden')) this._closePopover();
 
     this.metro.loadState(p.state);
+    this._setMode(p.state.appMode ?? 'expert', { restoreFocus: false });
     this._loadPracticeSettings(p.state.practiceMode);
 
     this._syncBpmDisplay();
