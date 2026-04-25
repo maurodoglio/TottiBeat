@@ -151,7 +151,55 @@ body {
 }
 
 /* ─── Beats-per-bar ─────────────────────────────────────── */
+.time-signature-fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.time-signature-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.time-signature-label {
+  margin-bottom: 0.75rem;
+}
+
+.time-signature-header .time-signature-label {
+  margin-bottom: 0;
+}
+
+.time-signature-preview {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+}
+
+.time-signature-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.time-signature-column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
 .beats-per-bar-grid {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.time-signature-denominator-grid {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
@@ -175,6 +223,11 @@ body {
   border-color: var(--accent);
   color: #fff;
   box-shadow: 0 0 12px rgba(108,99,255,0.5);
+}
+
+.denominator-btn {
+  min-width: 52px;
+  padding: 0 0.8rem;
 }
 
 /* ─── Beat Display ──────────────────────────────────────── */

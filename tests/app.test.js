@@ -368,6 +368,47 @@ describe('TottiBeat UI regressions', () => {
     expect(document.querySelector('.subdivision-btn.active')?.dataset.subdivision).toBe('quarter');
   });
 
+  it('renders time signature controls as a fraction with 4/4 selected by default', () => {
+    const { document } = createApp();
+
+    expect(document.querySelector('.time-signature-label')?.textContent).toContain('Time signature');
+    expect(document.querySelector('[data-beats="4"]')?.classList.contains('active')).toBe(true);
+    expect(document.querySelector('[data-beats="4"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelector('[data-denominator="4"]')?.classList.contains('active')).toBe(true);
+    expect(document.querySelector('[data-denominator="4"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(document.getElementById('time-signature-preview')?.textContent).toBe('4/4');
+  });
+
+  it('lets musicians choose a denominator without changing the numerator', () => {
+    const { document, window } = createApp();
+
+    document.querySelector('[data-beats="6"]').click();
+    document.querySelector('[data-denominator="8"]').click();
+
+    expect(document.querySelector('[data-beats="6"]')?.classList.contains('active')).toBe(true);
+    expect(document.querySelector('[data-beats="6"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelector('[data-denominator="8"]')?.classList.contains('active')).toBe(true);
+    expect(document.querySelector('[data-denominator="8"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelector('[data-denominator="4"]')?.getAttribute('aria-pressed')).toBe('false');
+    expect(document.getElementById('time-signature-preview')?.textContent).toBe('6/8');
+    expect(document.querySelectorAll('.beat-circle')).toHaveLength(6);
+    expect(window.__metro._beatInterval()).toBeCloseTo(0.25, 5);
+  });
+
+  it('changes beat duration when the denominator changes at the same BPM', () => {
+    const { document, window } = createApp();
+
+    window.__metro.bpm = 120;
+    document.querySelector('[data-denominator="4"]').click();
+    const quarterInterval = window.__metro._beatInterval();
+
+    document.querySelector('[data-denominator="8"]').click();
+    const eighthInterval = window.__metro._beatInterval();
+
+    expect(quarterInterval).toBeCloseTo(0.5, 5);
+    expect(eighthInterval).toBeCloseTo(0.25, 5);
+  });
+
   it('defaults to easy mode and hides expert-only controls when there are no saved presets', () => {
     const { document } = createApp();
 
@@ -429,6 +470,7 @@ describe('TottiBeat UI regressions', () => {
     const bpmInput = document.getElementById('bpm-input');
 
     document.querySelector('[data-beats="7"]').click();
+    document.querySelector('[data-denominator="8"]').click();
     bpmInput.value = '144';
     bpmInput.dispatchEvent(new window.Event('input', { bubbles: true }));
     document.querySelector('[data-mode="expert"]').click();
@@ -437,6 +479,8 @@ describe('TottiBeat UI regressions', () => {
 
     expect(document.querySelector('.mode-btn.active')?.dataset.mode).toBe('easy');
     expect(document.querySelector('.beats-btn.active')?.dataset.beats).toBe('7');
+    expect(document.querySelector('[data-denominator="8"]')?.classList.contains('active')).toBe(true);
+    expect(document.getElementById('time-signature-preview')?.textContent).toBe('7/8');
     expect(bpmInput.value).toBe('144');
     expect(document.querySelector('[data-mode-section="expert"]')?.hidden).toBe(true);
   });
@@ -454,6 +498,26 @@ describe('TottiBeat UI regressions', () => {
 
     expect(document.querySelector('.mode-btn.active')?.dataset.mode).toBe('expert');
     expect(document.querySelector('[data-mode-section="expert"]')?.hidden).toBe(false);
+  });
+
+  it('persists the full time signature when saving and loading a preset', () => {
+    const { document, window } = createApp();
+
+    document.querySelector('[data-beats="6"]').click();
+    document.querySelector('[data-denominator="8"]').click();
+    document.querySelector('.save-btn').click();
+    document.getElementById('preset-name-input').value = 'Compound Meter';
+    document.getElementById('preset-modal-confirm').click();
+
+    document.querySelector('[data-beats="4"]').click();
+    document.querySelector('[data-denominator="4"]').click();
+    document.querySelector('.load-btn').click();
+
+    expect(document.getElementById('time-signature-preview')?.textContent).toBe('6/8');
+    expect(document.querySelector('[data-beats="6"]')?.classList.contains('active')).toBe(true);
+    expect(document.querySelector('[data-denominator="8"]')?.classList.contains('active')).toBe(true);
+    expect(document.querySelector('.preset-meta')?.textContent).toContain('6/8');
+    expect(window.__metro._beatInterval()).toBeCloseTo(0.25, 5);
   });
 
   it('keeps beat circles non-interactive in easy mode even when expert per-beat settings were active', () => {
@@ -513,6 +577,8 @@ describe('TottiBeat UI regressions', () => {
   it('loads legacy presets without an app mode into expert mode for backward compatibility', () => {
     const { document, window } = createApp();
 
+    document.querySelector('[data-denominator="8"]').click();
+
     window.localStorage.setItem('tottibeat_presets', JSON.stringify([
       {
         name: 'Legacy Expert',
@@ -546,6 +612,8 @@ describe('TottiBeat UI regressions', () => {
     expect(document.querySelector('[data-mode-section="expert"]')?.hidden).toBe(false);
     expect(document.querySelector('.subdivision-btn.active')?.dataset.subdivision).toBe('triplet');
     expect(document.getElementById('uniform-toggle').checked).toBe(false);
+    expect(document.getElementById('time-signature-preview')?.textContent).toBe('4/4');
+    expect(document.querySelector('[data-denominator="4"]')?.getAttribute('aria-pressed')).toBe('true');
   });
 
   it('switching to easy mode resets hidden expert-only behaviors to safe defaults', () => {
