@@ -42,6 +42,7 @@ Use this checklist to track parity between the current web app and the future na
 - [ ] Count-in
 - [ ] Master volume
 - [ ] Import/export presets
+- [x] Audio validation checklist preview surface
 
 ## Reference behavior notes
 

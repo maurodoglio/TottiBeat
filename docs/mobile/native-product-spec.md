@@ -64,6 +64,8 @@ Must expose advanced tools without cluttering easy mode:
 - no hidden critical controls in Easy mode
 - native navigation and modal patterns
 - stable behavior during interruptions and app backgrounding
+- home-screen level polish: elevated cards, large metrics, and bottom navigation that feels native on modern phones
+- release readiness should be visible in-app via an audio validation checklist preview until hardware sign-off tooling is complete
 
 ## Non-goals for Batch A
 
