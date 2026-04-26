@@ -37,7 +37,11 @@ describe('native mobile foundation batch', () => {
 
     expect(workflow).toContain('name: Mobile CI');
     expect(workflow).toContain('working-directory: mobile');
+    expect(workflow).toContain('Install root dependencies');
+    expect(workflow).toContain('working-directory: .');
     expect(workflow).toContain('npm ci');
+    expect(workflow).toContain('Run root parity checks');
+    expect(workflow).toContain('npm run test:web');
     expect(workflow).toContain('npm run lint');
     expect(workflow).toContain('npm test');
   });
