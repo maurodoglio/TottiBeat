@@ -1,3 +1,5 @@
+export { buildAudioValidationChecklist, summarizeAudioValidationReadiness } from './validation';
+export type { AudioValidationCheck, AudioValidationReadiness, AudioValidationStatus } from './validation';
 export { configureAudioSession, createExpoAudioEngine } from './expoAudioEngine';
 export type {
   AudioClock,
