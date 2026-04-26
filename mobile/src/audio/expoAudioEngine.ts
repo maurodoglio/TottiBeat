@@ -20,6 +20,7 @@ export type AudioEngine = {
   prepare(): Promise<void>;
   playAccent(atSeconds: number): Promise<void>;
   playTick(atSeconds: number): Promise<void>;
+  cancelScheduled(): void;
   unload(): Promise<void>;
 };
 
@@ -65,7 +66,7 @@ async function loadExpoAvModule(): Promise<ExpoAvModule> {
 class ExpoLoadedClip implements LoadedAudioClip {
   constructor(private readonly sound: ExpoSoundInstance) {}
 
-  async play(): Promise<void> {
+  async play(_atSeconds: number): Promise<void> {
     await this.sound.replayAsync();
   }
 
@@ -75,6 +76,8 @@ class ExpoLoadedClip implements LoadedAudioClip {
 }
 
 class ExpoAudioClipPlayer implements AudioClipPlayer {
+  constructor(private readonly clock: AudioClock) {}
+
   async load(clip: AudioClip): Promise<LoadedAudioClip> {
     const expoAv = await loadExpoAvModule();
     const { sound } = await expoAv.Audio.Sound.createAsync(clip.moduleId, {
@@ -100,11 +103,12 @@ export async function configureAudioSession(
 }
 
 export function createExpoAudioEngine({
-  player = new ExpoAudioClipPlayer(),
+  player,
   clock = { currentTime: 0 },
   accentClip,
   tickClip,
 }: ExpoAudioEngineOptions): AudioEngine {
+  const resolvedPlayer = player ?? new ExpoAudioClipPlayer(clock);
   let accent: LoadedAudioClip | null = null;
   let tick: LoadedAudioClip | null = null;
   let accentPromise: Promise<LoadedAudioClip> | null = null;
@@ -116,7 +120,7 @@ export function createExpoAudioEngine({
     }
 
     if (!accentPromise) {
-      accentPromise = player.load(accentClip).then((loaded) => {
+      accentPromise = resolvedPlayer.load(accentClip).then((loaded) => {
         accent = loaded;
         return loaded;
       });
@@ -131,7 +135,7 @@ export function createExpoAudioEngine({
     }
 
     if (!tickPromise) {
-      tickPromise = player.load(tickClip).then((loaded) => {
+      tickPromise = resolvedPlayer.load(tickClip).then((loaded) => {
         tick = loaded;
         return loaded;
       });
@@ -153,6 +157,10 @@ export function createExpoAudioEngine({
     async playTick(atSeconds: number) {
       const loadedTick = await ensureTick();
       await loadedTick.play(Math.max(atSeconds, clock.currentTime));
+    },
+
+    cancelScheduled() {
+      // Transport-level scheduling owns cancellation; Expo playback currently fires immediately once invoked.
     },
 
     async unload() {

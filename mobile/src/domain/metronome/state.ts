@@ -81,6 +81,11 @@ export type PracticeBarEndResult = {
   progress: PracticeModeProgress;
 };
 
+export type TapTempoResult = {
+  bpm: number;
+  tapTimes: number[];
+};
+
 export type PracticeProgressResetInput = {
   isPlaying: boolean;
 };
@@ -97,6 +102,8 @@ export type PresetRecord = {
 const SOUND_TYPE_IDS = new Set<string>(SOUND_TYPES.map((option) => option.id));
 const SUBDIVISION_IDS = new Set<string>(SUBDIVISION_TYPES.map((option) => option.id));
 const NOTE_VALUES = new Set<number>(TIME_SIGNATURE_DENOMINATORS);
+const TAP_TEMPO_RESET_MS = 2000;
+const TAP_TEMPO_MAX_INTERVALS = 6;
 
 function clampInteger(value: unknown, fallback: number, min: number, max: number) {
   const parsed = Number.parseInt(String(value), 10);
@@ -248,6 +255,34 @@ export function getBeatIntervalSeconds({ bpm, noteValue }: Pick<MetronomeState, 
 
 export function getSubdivisionSteps(subdivision: string): number {
   return SUBDIVISION_TYPES.find((option) => option.id === subdivision)?.stepsPerBeat ?? 1;
+}
+
+export function registerTapTempoTap(tapTimes: number[], now: number, currentBpm: number): TapTempoResult {
+  const nextTapTimes = [...tapTimes];
+  const lastTap = nextTapTimes[nextTapTimes.length - 1];
+
+  if (lastTap !== undefined && now - lastTap > TAP_TEMPO_RESET_MS) {
+    nextTapTimes.length = 0;
+  }
+
+  nextTapTimes.push(now);
+  if (nextTapTimes.length > TAP_TEMPO_MAX_INTERVALS + 1) {
+    nextTapTimes.shift();
+  }
+
+  if (nextTapTimes.length < 2) {
+    return {
+      bpm: currentBpm,
+      tapTimes: nextTapTimes,
+    };
+  }
+
+  const intervals = nextTapTimes.slice(1).map((time, index) => time - nextTapTimes[index]);
+  const averageInterval = intervals.reduce((sum, interval) => sum + interval, 0) / intervals.length;
+  return {
+    bpm: clampInteger(Math.round(60000 / averageInterval), currentBpm, MIN_BPM, MAX_BPM),
+    tapTimes: nextTapTimes,
+  };
 }
 
 export function deserializePracticeModeSettings(raw: PracticeModeSettingsInput = {}): PracticeModeSettings {
