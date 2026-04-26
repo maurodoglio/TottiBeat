@@ -3,6 +3,8 @@ import { getBeatIntervalSeconds, getSubdivisionSteps } from '../domain/metronome
 
 import type { AudioClock, AudioEngine } from './expoAudioEngine';
 
+type ScheduledTimer = ReturnType<typeof setTimeout>;
+
 export type TransportState = {
   bpm: number;
   beatsPerBar: number;
@@ -48,6 +50,7 @@ export function createAudioTransport({
   let currentBeat = 0;
   let nextNoteTime = 0;
   let queuedNotes = 0;
+  let scheduledTimers = new Set<ScheduledTimer>();
 
   function beatIntervalSeconds() {
     return getBeatIntervalSeconds({ bpm: state.bpm, noteValue: state.noteValue });
@@ -74,21 +77,49 @@ export function createAudioTransport({
     }
   }
 
-  async function scheduleBeat(beat: number, atSeconds: number) {
-    if (beat === 0) {
-      await engine.playAccent(atSeconds);
-    } else {
-      await engine.playTick(atSeconds);
-    }
+  function clearScheduledTimers() {
+    scheduledTimers.forEach((timer) => {
+      clearTimeout(timer);
+    });
+    scheduledTimers = new Set<ScheduledTimer>();
+  }
+
+  function scheduleNote(atSeconds: number, play: () => Promise<void>) {
+    const delayMs = Math.max(0, Math.round((atSeconds - clock.currentTime) * 1000));
     queuedNotes += 1;
+
+    const runNote = () => {
+      scheduledTimers.delete(timer);
+      queuedNotes = Math.max(0, queuedNotes - 1);
+      if (!isPlaying) {
+        return;
+      }
+      void play();
+    };
+
+    const timer = delayMs <= 0 ? setTimeout(runNote, 0) : setTimeout(runNote, delayMs);
+    if (delayMs <= 0) {
+      runNote();
+      clearTimeout(timer);
+      return;
+    }
+
+    scheduledTimers.add(timer);
+  }
+
+  function scheduleBeat(beat: number, atSeconds: number) {
+    if (beat === 0) {
+      scheduleNote(atSeconds, () => engine.playAccent(atSeconds));
+    } else {
+      scheduleNote(atSeconds, () => engine.playTick(atSeconds));
+    }
 
     const subdivisionSteps = getSubdivisionSteps(state.subdivision);
     if (subdivisionSteps > 1) {
       const stepDuration = beatIntervalSeconds() / subdivisionSteps;
-      // schedule only the extra ticks; the base beat is already scheduled above
       for (let step = 1; step < subdivisionSteps; step += 1) {
-        await engine.playTick(atSeconds + (stepDuration * step));
-        queuedNotes += 1;
+        const subdivisionTime = atSeconds + (stepDuration * step);
+        scheduleNote(subdivisionTime, () => engine.playTick(subdivisionTime));
       }
     }
   }
@@ -100,6 +131,7 @@ export function createAudioTransport({
 
     async start() {
       await engine.prepare();
+      clearScheduledTimers();
       isPlaying = true;
       currentBeat = 0;
       queuedNotes = 0;
@@ -108,6 +140,8 @@ export function createAudioTransport({
 
     stop() {
       isPlaying = false;
+      engine.cancelScheduled();
+      clearScheduledTimers();
       currentBeat = 0;
       queuedNotes = 0;
       nextNoteTime = 0;
@@ -129,7 +163,7 @@ export function createAudioTransport({
 
       let scheduled = 0;
       while (nextNoteTime < clock.currentTime + lookAheadSeconds) {
-        await scheduleBeat(currentBeat, nextNoteTime);
+        scheduleBeat(currentBeat, nextNoteTime);
         scheduled += 1;
         nextNoteTime += beatIntervalSeconds();
         currentBeat = (currentBeat + 1) % state.beatsPerBar;

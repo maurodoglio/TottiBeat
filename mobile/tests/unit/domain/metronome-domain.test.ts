@@ -24,6 +24,7 @@ import {
   getBeatIntervalSeconds,
   getSubdivisionSteps,
   getTempoName,
+  registerTapTempoTap,
   resetPracticeProgress,
   serializeMetronomeState,
   syncPracticeBarStart,
@@ -53,6 +54,38 @@ describe('native metronome domain parity', () => {
     expect(getSubdivisionSteps('triplet')).toBe(3);
     expect(getSubdivisionSteps('sixteenth')).toBe(4);
     expect(getSubdivisionSteps('bogus')).toBe(1);
+  });
+
+  it('derives native tap tempo BPM from averaged tap intervals using the web reset rules', () => {
+    const firstTap = registerTapTempoTap([], 1_000, 120);
+    expect(firstTap.tapTimes).toEqual([1_000]);
+    expect(firstTap.bpm).toBe(120);
+
+    const secondTap = registerTapTempoTap(firstTap.tapTimes, 1_400, firstTap.bpm);
+    expect(secondTap.tapTimes).toEqual([1_000, 1_400]);
+    expect(secondTap.bpm).toBe(150);
+
+    const staleTap = registerTapTempoTap(secondTap.tapTimes, 3_600, secondTap.bpm);
+    expect(staleTap.tapTimes).toEqual([3_600]);
+    expect(staleTap.bpm).toBe(150);
+
+    const zeroTapReset = registerTapTempoTap([0], 2_500, 120);
+    expect(zeroTapReset.tapTimes).toEqual([2_500]);
+    expect(zeroTapReset.bpm).toBe(120);
+  });
+
+  it('caps native tap tempo history to the same rolling window as the web app', () => {
+    let bpm = 120;
+    let tapTimes: number[] = [];
+
+    [0, 400, 800, 1_200, 1_600, 2_000, 2_400, 2_800].forEach((time) => {
+      const result = registerTapTempoTap(tapTimes, time, bpm);
+      tapTimes = result.tapTimes;
+      bpm = result.bpm;
+    });
+
+    expect(tapTimes).toEqual([400, 800, 1_200, 1_600, 2_000, 2_400, 2_800]);
+    expect(bpm).toBe(150);
   });
 
   it('builds default beat settings with an accented first beat and cycling colors', () => {
